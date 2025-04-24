@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """
-Modern Tetris - Game Constants
+DENSO Tetris - Game Constants
 -----------------------------
-ไฟล์นี้เก็บค่าคงที่ต่างๆ ที่ใช้ในเกม
+This file stores various constants used in the game
 """
 
 import pygame
@@ -27,50 +27,68 @@ from pygame.locals import (
 )
 import os
 
-# ค่าพื้นฐานของหน้าจอ
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 800
-TITLE = "Modern Tetris | เกม Tetris สมัยใหม่"
+# Screen basics - Optimized for 14" notebook in windowed mode
+SCREEN_WIDTH = 720
+SCREEN_HEIGHT = 680
+TITLE = "DENSO Tetris"
 
-# ขนาดของกริด
-GRID_SIZE = 30
+# Grid size - slightly smaller for better fit on notebook screens
+GRID_SIZE = 28
 BOARD_WIDTH = 10
 BOARD_HEIGHT = 20
 
-# ตำแหน่งของบอร์ดเกม (กึ่งกลางหน้าจอ)
+# Board position (center of screen)
 BOARD_X = (SCREEN_WIDTH - BOARD_WIDTH * GRID_SIZE) // 2
 BOARD_Y = (SCREEN_HEIGHT - BOARD_HEIGHT * GRID_SIZE) // 2
 
-# สีต่างๆ
+# Colors (elegant, minimal palette)
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 GRAY = (128, 128, 128)
-DARK_GRAY = (50, 50, 50)
+DARK_GRAY = (40, 40, 40)
+LIGHT_GRAY = (200, 200, 200)
+BG_COLOR = (18, 18, 24)  # Dark blue-gray background
 
-# สีของเตโตรมิโน (โทนนีออน)
+# DENSO Main Red Color
+DENSO_RED = (220, 0, 50)  # DC0032 in RGB
+DENSO_DARK_RED = (160, 0, 35)
+DENSO_LIGHT_RED = (255, 60, 90)
+
+# UI Colors (elegant minimal palette)
+UI_BG = (24, 24, 32)  # Dark blue-gray background
+UI_ACCENT = (230, 230, 230)  # Almost white accent
+UI_HIGHLIGHT = DENSO_RED  # Highlight color
+UI_TEXT = (245, 245, 245)  # Off-white text
+UI_SUBTEXT = (180, 180, 190)  # Light gray for secondary text
+UI_BORDER = (60, 60, 70)  # Dark border
+UI_BUTTON = (45, 45, 60)  # Button background
+UI_BUTTON_HOVER = (55, 55, 70)  # Button hover state
+UI_DISABLED = (100, 100, 110)  # Disabled elements
+
+# Tetromino colors (elegant palette with distinct colors)
 TETROMINO_COLORS = {
-    "I": (0, 255, 255),  # สีฟ้า (I piece)
-    "J": (0, 0, 255),  # สีน้ำเงิน (J piece)
-    "L": (255, 165, 0),  # สีส้ม (L piece)
-    "O": (255, 255, 0),  # สีเหลือง (O piece)
-    "S": (0, 255, 0),  # สีเขียว (S piece)
-    "T": (128, 0, 128),  # สีม่วง (T piece)
-    "Z": (255, 0, 0),  # สีแดง (Z piece)
-    "ghost": (40, 40, 40),  # สีเทาเข้ม (Ghost piece)
+    "I": (0, 190, 218),  # Cyan (I piece)
+    "J": (0, 80, 200),  # Blue (J piece)
+    "L": (235, 138, 5),  # Orange (L piece)
+    "O": (235, 210, 0),  # Yellow (O piece)
+    "S": (0, 190, 80),  # Green (S piece)
+    "T": (220, 0, 50),  # DENSO Red (T piece)
+    "Z": (235, 50, 50),  # Red (Z piece)
+    "ghost": (70, 70, 85),  # Ghost piece - visible but subtle
 }
 
-# สีเรืองแสงของเตโตรมิโน (สำหรับเอฟเฟกต์แสง)
+# Tetromino glow colors (for subtle glow effects)
 TETROMINO_GLOW_COLORS = {
-    "I": (100, 255, 255),  # สีฟ้าเรืองแสง
-    "J": (100, 100, 255),  # สีน้ำเงินเรืองแสง
-    "L": (255, 200, 100),  # สีส้มเรืองแสง
-    "O": (255, 255, 100),  # สีเหลืองเรืองแสง
-    "S": (100, 255, 100),  # สีเขียวเรืองแสง
-    "T": (200, 100, 200),  # สีม่วงเรืองแสง
-    "Z": (255, 100, 100),  # สีแดงเรืองแสง
+    "I": (100, 210, 235),  # Cyan glow
+    "J": (100, 130, 235),  # Blue glow
+    "L": (245, 170, 100),  # Orange glow
+    "O": (245, 220, 100),  # Yellow glow
+    "S": (100, 210, 130),  # Green glow
+    "T": (235, 100, 130),  # DENSO Red glow
+    "Z": (245, 100, 100),  # Red glow
 }
 
-# รูปร่างของเตโตรมิโน
+# Tetromino shapes
 TETROMINO_SHAPES = {
     "I": [
         [(0, 0), (0, 1), (0, 2), (0, 3)],
@@ -116,9 +134,9 @@ TETROMINO_SHAPES = {
     ],
 }
 
-# จำนวนเฟรมที่ทำให้บล็อกตกเร็วขึ้นในแต่ละระดับ
+# Frames per level (falling speed)
 GRAVITY_LEVELS = {
-    1: 60,  # 1 ช่องต่อ 60 เฟรม
+    1: 60,  # 1 cell per 60 frames
     2: 50,
     3: 40,
     4: 30,
@@ -137,28 +155,28 @@ GRAVITY_LEVELS = {
     17: 2,
     18: 2,
     19: 1,
-    20: 1,  # 1 ช่องต่อเฟรม (เร็วที่สุด)
+    20: 1,  # 1 cell per frame (fastest)
 }
 
-# คะแนนสำหรับการล้างแถว
-SCORE_SINGLE = 100  # 1 แถว
-SCORE_DOUBLE = 300  # 2 แถว
-SCORE_TRIPLE = 500  # 3 แถว
-SCORE_TETRIS = 800  # 4 แถว
-SCORE_SOFT_DROP = 1  # Soft drop (คะแนนต่อบล็อก)
-SCORE_HARD_DROP = 2  # Hard drop (คะแนนต่อบล็อก)
+# Scoring points
+SCORE_SINGLE = 100  # 1 line
+SCORE_DOUBLE = 300  # 2 lines
+SCORE_TRIPLE = 500  # 3 lines
+SCORE_TETRIS = 800  # 4 lines
+SCORE_SOFT_DROP = 1  # Soft drop (points per block)
+SCORE_HARD_DROP = 2  # Hard drop (points per block)
 SCORE_T_SPIN = 400  # T-Spin bonus
 
-# เคอร์เซอร์คีย์บอร์ด (DAS = Delayed Auto Shift)
-DAS_DELAY = 170  # มิลลิวินาที - เวลาก่อนที่จะเริ่มเลื่อนซ้ำ
-ARR_DELAY = 50  # มิลลิวินาที - เวลาระหว่างแต่ละการเลื่อนซ้ำ
+# Keyboard control (DAS = Delayed Auto Shift)
+DAS_DELAY = 170  # milliseconds - time before repeat starts
+ARR_DELAY = 50  # milliseconds - time between repeats
 
-# ทิศทาง
+# Directions
 DIR_LEFT = (-1, 0)
 DIR_RIGHT = (1, 0)
 DIR_DOWN = (0, 1)
 
-# การควบคุม (ค่าเริ่มต้น - จะถูกโหลดจาก config)
+# Controls (default - will be loaded from config)
 DEFAULT_CONTROLS = {
     "MOVE_LEFT": [K_LEFT, K_a],
     "MOVE_RIGHT": [K_RIGHT, K_d],
@@ -170,14 +188,14 @@ DEFAULT_CONTROLS = {
     "PAUSE": [K_p, K_ESCAPE],
 }
 
-# พาธของไฟล์ assets
+# Assets paths
 ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets")
 IMAGES_DIR = os.path.join(ASSETS_DIR, "images")
 SOUNDS_DIR = os.path.join(ASSETS_DIR, "sounds")
 FONTS_DIR = os.path.join(ASSETS_DIR, "fonts")
 SHADERS_DIR = os.path.join(ASSETS_DIR, "shaders")
 
-# ชื่อไฟล์เสียง
+# Sound files
 SOUND_FILES = {
     "move": "move.wav",
     "rotate": "rotate.wav",
@@ -190,9 +208,11 @@ SOUND_FILES = {
     "menu_change": "menu_change.wav",
     "t_spin": "t_spin.wav",
     "hold": "hold.wav",
+    "button_hover": "button_hover.wav",  # New sound for button hover
+    "button_click": "button_click.wav",  # New sound for button click
 }
 
-# ชื่อไฟล์เพลง
+# Music files
 MUSIC_FILES = {
     "menu": "menu_theme.mp3",
     "game": "game_theme.mp3",
@@ -200,25 +220,42 @@ MUSIC_FILES = {
     "game_over": "game_over.mp3",
 }
 
-# เวลาในการแสดงเอฟเฟกต์การล้างแถว (มิลลิวินาที)
+# UI dimensions
+BUTTON_WIDTH = 220
+BUTTON_HEIGHT = 50
+BUTTON_PADDING = 15
+BUTTON_CORNER_RADIUS = 5
+MENU_SPACING = 70  # Space between menu items
+TOOLTIP_DELAY = 500  # milliseconds before showing tooltip
+
+# Font sizes optimized for 14" notebook
+FONT_SIZE_TITLE = 56
+FONT_SIZE_LARGE = 28
+FONT_SIZE_MEDIUM = 22
+FONT_SIZE_SMALL = 16
+FONT_SIZE_TINY = 12
+
+# Line clear effect time (milliseconds)
 LINE_CLEAR_DELAY = 200
 
-# ความลึกของรายการระดับ (จำนวนผลลัพธ์ที่แสดงในตาราง)
+# Leaderboard depth (number of results to show)
 LEADERBOARD_DEPTH = 10
 
-# เอฟเฟกต์อนุภาค
+# Particle effects - reduced for clean look
 PARTICLE_COUNT = {
-    "line_clear": 50,  # จำนวนอนุภาคต่อแถวที่ล้าง
-    "tetris": 200,  # จำนวนอนุภาคเมื่อล้าง 4 แถว
-    "t_spin": 150,  # จำนวนอนุภาคเมื่อทำ T-spin
-    "level_up": 100,  # จำนวนอนุภาคเมื่อเลเวลอัพ
-    "game_over": 300,  # จำนวนอนุภาคเมื่อเกมจบ
+    "line_clear": 30,  # particles per line cleared
+    "tetris": 100,  # particles for a 4-line clear
+    "t_spin": 80,  # particles for T-spin
+    "level_up": 50,  # particles for level up
+    "game_over": 150,  # particles for game over
 }
 
 # Game States
-STATE_MENU = 0  # อยู่ในเมนู
-STATE_PLAYING = 1  # กำลังเล่น
-STATE_PAUSED = 2  # หยุดชั่วคราว
-STATE_GAME_OVER = 3  # เกมจบ
-STATE_LINE_CLEAR = 4  # กำลังล้างแถว
-STATE_LEADERBOARD = 5  # แสดงตารางคะแนน
+STATE_MENU = 0  # in menu
+STATE_PLAYING = 1  # playing
+STATE_PAUSED = 2  # paused
+STATE_GAME_OVER = 3  # game over
+STATE_LINE_CLEAR = 4  # clearing lines
+STATE_LEADERBOARD = 5  # showing leaderboard
+STATE_REGISTER = 6  # registration screen
+STATE_PROFILE = 7  # user profile screen

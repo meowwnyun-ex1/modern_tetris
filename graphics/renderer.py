@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """
-Modern Tetris - Renderer
+DENSO Tetris - Renderer
 ----------------------
-คลาสสำหรับการแสดงผลกราฟิกทั้งหมด
+Class for rendering all graphics
 """
 
 import pygame
@@ -23,35 +23,38 @@ from core.constants import (
     BOARD_WIDTH,
     BOARD_HEIGHT,
     GRID_SIZE,
+    DENSO_RED,
+    DENSO_DARK_RED,
+    DENSO_LIGHT_RED,
 )
 from graphics.effects import BloomEffect, ShakeEffect
 
 
 class Renderer:
-    """คลาสสำหรับการแสดงผลกราฟิก"""
+    """Class for graphics rendering"""
 
     def __init__(self, screen, config):
         """
-        สร้างเรนเดอร์เรอร์ใหม่
+        Create a new renderer
 
         Args:
-            screen (pygame.Surface): พื้นผิวหลักสำหรับการแสดงผล
-            config (dict): การตั้งค่าเกม
+            screen (pygame.Surface): Main surface for display
+            config (dict): Game config
         """
         self.screen = screen
         self.config = config
 
-        # เก็บขนาดหน้าจอ
+        # Store screen size
         self.width, self.height = screen.get_size()
 
-        # โหลดธีม
+        # Load theme
         self.theme = config["graphics"]["theme"]
 
-        # สร้างเอฟเฟกต์
+        # Create effects
         self.bloom_effect = BloomEffect(threshold=100, blur_passes=2, intensity=0.8)
         self.shake_effect = ShakeEffect()
 
-        # โหลดรูปภาพพื้นหลัง
+        # Load background image
         try:
             self.background = pygame.image.load(
                 f"assets/images/backgrounds/{self.theme}_bg.png"
@@ -60,20 +63,20 @@ class Renderer:
                 self.background, (self.width, self.height)
             )
         except:
-            # สร้างพื้นหลังเอง
+            # Create our own background
             self.background = self._create_background()
 
-        # พื้นหลังความเร็วสูง (สำหรับการเคลื่อนที่อย่างรวดเร็ว)
+        # High-speed background (for fast movement)
         self.high_speed_bg = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
         self._create_high_speed_background()
 
-        # พื้นผิวสำหรับเอฟเฟกต์
+        # Surfaces for effects
         self.overlay_surface = pygame.Surface(
             (self.width, self.height), pygame.SRCALPHA
         )
         self.glow_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
 
-        # นำเข้าฟอนต์
+        # Load fonts
         pygame.font.init()
         try:
             self.title_font = pygame.font.Font(
@@ -89,7 +92,7 @@ class Renderer:
                 f'assets/fonts/{self.config["ui"]["font"]}.ttf', 18
             )
         except:
-            # ใช้ฟอนต์ระบบถ้าโหลดไม่ได้
+            # Use system font if loading fails
             self.title_font = pygame.font.SysFont("Arial", 48)
             self.large_font = pygame.font.SysFont("Arial", 36)
             self.medium_font = pygame.font.SysFont("Arial", 24)
@@ -97,45 +100,49 @@ class Renderer:
 
     def _create_background(self):
         """
-        สร้างพื้นหลังเกมตามธีม
+        Create game background based on theme
 
         Returns:
-            pygame.Surface: พื้นหลังที่สร้างขึ้น
+            pygame.Surface: Created background
         """
         bg = pygame.Surface((self.width, self.height))
 
-        if self.theme == "neon":
-            # สร้างพื้นหลังสีดำด้วยเส้นกริดและจุดสีนีออน
-            bg.fill((0, 0, 0))
+        if self.theme == "denso":
+            # Create black background with DENSO red grid and neon dots
+            bg.fill((10, 0, 5))  # Very dark red tint
 
-            # วาดเส้นกริดในแนวนอน
+            # Draw horizontal grid lines
             for y in range(0, self.height, 40):
-                line_color = (0, 50, 80, 50)
+                line_color = (DENSO_RED[0], DENSO_RED[1], DENSO_RED[2], 30)
                 pygame.draw.line(bg, line_color, (0, y), (self.width, y), 1)
 
-            # วาดเส้นกริดในแนวตั้ง
+            # Draw vertical grid lines
             for x in range(0, self.width, 40):
-                line_color = (0, 50, 80, 50)
+                line_color = (DENSO_RED[0], DENSO_RED[1], DENSO_RED[2], 30)
                 pygame.draw.line(bg, line_color, (x, 0), (x, self.height), 1)
 
-            # วาดจุดสีนีออนแบบสุ่ม
+            # Draw random neon dots
             for _ in range(100):
                 x = random.randint(0, self.width - 1)
                 y = random.randint(0, self.height - 1)
                 radius = random.randint(1, 3)
                 brightness = random.randint(50, 200)
-                color = (0, brightness, brightness)
+                color = (brightness, brightness // 4, brightness // 4)
                 pygame.gfxdraw.filled_circle(bg, x, y, radius, color)
-                # เพิ่มเอฟเฟกต์เรืองแสง
+                # Add glow effect
                 pygame.gfxdraw.aacircle(
-                    bg, x, y, radius + 1, (0, brightness // 2, brightness // 2)
+                    bg,
+                    x,
+                    y,
+                    radius + 1,
+                    (brightness // 2, brightness // 8, brightness // 8),
                 )
 
         elif self.theme == "retro":
-            # สร้างพื้นหลังแบบ retro
+            # Create retro background
             bg.fill((0, 0, 50))
 
-            # วาดเส้นกริดแบบ retro
+            # Draw retro grid
             for y in range(0, self.height, 20):
                 color = (200, 50, 50) if y % 40 == 0 else (100, 50, 50)
                 pygame.draw.line(bg, color, (0, y), (self.width, y), 1)
@@ -145,10 +152,10 @@ class Renderer:
                 pygame.draw.line(bg, color, (x, 0), (x, self.height), 1)
 
         elif self.theme == "minimalist":
-            # สร้างพื้นหลังแบบเรียบง่าย
+            # Create minimalist background
             bg.fill((240, 240, 240))
 
-            # วาดจุดสีอ่อนแบบสุ่ม
+            # Draw light random dots
             for _ in range(200):
                 x = random.randint(0, self.width - 1)
                 y = random.randint(0, self.height - 1)
@@ -157,34 +164,34 @@ class Renderer:
                 pygame.gfxdraw.filled_circle(bg, x, y, radius, color)
 
         else:
-            # ธีมเริ่มต้น (สีดำล้วน)
+            # Default theme (plain black)
             bg.fill(BLACK)
 
         return bg
 
     def _create_high_speed_background(self):
-        """สร้างพื้นหลังสำหรับความเร็วสูง (เส้นพุ่งลงด้านล่าง)"""
-        self.high_speed_bg.fill((0, 0, 0, 0))  # โปร่งใส
+        """Create background for high speed (lines rushing down)"""
+        self.high_speed_bg.fill((0, 0, 0, 0))  # Transparent
 
         for _ in range(100):
             x = random.randint(0, self.width)
             y = random.randint(0, self.height)
             length = random.randint(10, 50)
-            color = (0, 200, 255, random.randint(20, 100))
+            color = (DENSO_RED[0], DENSO_RED[1], DENSO_RED[2], random.randint(20, 100))
 
             pygame.draw.line(self.high_speed_bg, color, (x, y), (x, y + length), 1)
 
     def render_background(self, level=1):
         """
-        วาดพื้นหลัง
+        Draw background
 
         Args:
-            level (int, optional): ระดับความเร็วของเกม
+            level (int, optional): Game speed level
         """
-        # วาดพื้นหลังหลัก
+        # Draw main background
         self.screen.blit(self.background, (0, 0))
 
-        # วาดเอฟเฟกต์พื้นหลังความเร็วสูงถ้าระดับสูงพอ
+        # Draw high-speed background effect if level is high enough
         if level > 10:
             speed_alpha = min(255, (level - 10) * 25)
             high_speed_copy = self.high_speed_bg.copy()
@@ -192,72 +199,76 @@ class Renderer:
             self.screen.blit(high_speed_copy, (0, 0))
 
     def render_pause_overlay(self):
-        """วาดเอฟเฟกต์ซ้อนทับเมื่อหยุดเกม"""
-        # วาดพื้นหลังโปร่งใสสีดำ
+        """Draw overlay effect when game is paused"""
+        # Draw transparent black background
         overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))  # สีดำโปร่งแสง
+        overlay.fill((0, 0, 0, 160))  # Semi-transparent black
         self.screen.blit(overlay, (0, 0))
 
-        # วาดข้อความ "PAUSED"
-        text = self.large_font.render("หยุดชั่วคราว", True, (255, 255, 255))
+        # Draw "PAUSED" text
+        text = self.large_font.render("PAUSED", True, (255, 255, 255))
         text_rect = text.get_rect(center=(self.width // 2, self.height // 2 - 40))
         self.screen.blit(text, text_rect)
 
-        # วาดคำแนะนำ
-        hint = self.medium_font.render("กด ESC หรือ P เพื่อเล่นต่อ", True, (200, 200, 200))
+        # Draw hint
+        hint = self.medium_font.render(
+            "Press ESC or P to resume", True, (200, 200, 200)
+        )
         hint_rect = hint.get_rect(center=(self.width // 2, self.height // 2 + 20))
         self.screen.blit(hint, hint_rect)
 
     def render_game_over(self, score, level, lines):
         """
-        วาดหน้าจอเกมจบ
+        Draw game over screen
 
         Args:
-            score (int): คะแนนสุดท้าย
-            level (int): ระดับสุดท้าย
-            lines (int): จำนวนแถวที่ล้างได้
+            score (int): Final score
+            level (int): Final level
+            lines (int): Number of lines cleared
         """
-        # วาดพื้นหลังโปร่งใสสีดำ
+        # Draw semi-transparent black background
         overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 200))  # สีดำโปร่งแสงเข้มกว่า
+        overlay.fill((0, 0, 0, 200))  # More opaque black
         self.screen.blit(overlay, (0, 0))
 
-        # วาดข้อความ "GAME OVER"
-        text = self.title_font.render("เกมจบ", True, (255, 50, 50))
+        # Draw "GAME OVER" text
+        text = self.title_font.render("GAME OVER", True, DENSO_RED)
         text_rect = text.get_rect(center=(self.width // 2, self.height // 3 - 40))
         self.screen.blit(text, text_rect)
 
-        # วาดคะแนน
-        score_text = self.large_font.render(f"คะแนน: {score}", True, (255, 255, 255))
+        # Draw score
+        score_text = self.large_font.render(f"Score: {score}", True, (255, 255, 255))
         score_rect = score_text.get_rect(
             center=(self.width // 2, self.height // 2 - 40)
         )
         self.screen.blit(score_text, score_rect)
 
-        # วาดระดับและแถวที่ล้าง
-        level_text = self.medium_font.render(f"ระดับ: {level}", True, (200, 200, 200))
+        # Draw level and lines cleared
+        level_text = self.medium_font.render(f"Level: {level}", True, (200, 200, 200))
         level_rect = level_text.get_rect(center=(self.width // 2, self.height // 2))
         self.screen.blit(level_text, level_rect)
 
-        lines_text = self.medium_font.render(f"แถวที่ล้าง: {lines}", True, (200, 200, 200))
+        lines_text = self.medium_font.render(
+            f"Lines Cleared: {lines}", True, (200, 200, 200)
+        )
         lines_rect = lines_text.get_rect(
             center=(self.width // 2, self.height // 2 + 30)
         )
         self.screen.blit(lines_text, lines_rect)
 
-        # วาดคำแนะนำ
+        # Draw hint
         hint = self.medium_font.render(
-            "กด Enter เพื่อกลับไปยังเมนูหลัก", True, (200, 200, 200)
+            "Press Enter to return to main menu", True, (200, 200, 200)
         )
         hint_rect = hint.get_rect(center=(self.width // 2, self.height // 2 + 100))
         self.screen.blit(hint, hint_rect)
 
     def apply_bloom(self, surface):
         """
-        ใช้เอฟเฟกต์ Bloom กับพื้นผิว
+        Apply Bloom effect to surface
 
         Args:
-            surface (pygame.Surface): พื้นผิวที่จะใช้เอฟเฟกต์
+            surface (pygame.Surface): Surface to apply effect to
         """
         if self.config["graphics"]["bloom_effect"]:
             bloomed_surface = self.bloom_effect.apply(surface)
@@ -265,83 +276,83 @@ class Renderer:
 
     def apply_shake(self, duration=0.3, intensity=5):
         """
-        เริ่มเอฟเฟกต์การสั่น
+        Start shake effect
 
         Args:
-            duration (float): ระยะเวลาของการสั่น (วินาที)
-            intensity (float): ความแรงของการสั่น (พิกเซล)
+            duration (float): Duration of shake (seconds)
+            intensity (float): Intensity of shake (pixels)
         """
         if self.config["graphics"]["shake_effect"]:
             self.shake_effect.start(intensity, duration)
 
     def update_effects(self, dt):
         """
-        อัปเดตเอฟเฟกต์ทั้งหมด
+        Update all effects
 
         Args:
-            dt (float): เวลาที่ผ่านไปตั้งแต่การอัปเดตล่าสุด (วินาที)
+            dt (float): Time passed since last update (seconds)
 
         Returns:
-            tuple: (offset_x, offset_y) การเคลื่อนที่ของหน้าจอจากเอฟเฟกต์การสั่น
+            tuple: (offset_x, offset_y) Screen movement from shake effect
         """
-        # อัปเดตเอฟเฟกต์การสั่น
+        # Update shake effect
         return self.shake_effect.update(dt)
 
     def render_loading_screen(self, progress=0):
         """
-        วาดหน้าจอโหลด
+        Draw loading screen
 
         Args:
-            progress (float): ความคืบหน้าของการโหลด (0-1)
+            progress (float): Loading progress (0-1)
         """
-        # ล้างหน้าจอ
+        # Clear screen
         self.screen.fill(BLACK)
 
-        # วาดข้อความ "LOADING"
-        text = self.large_font.render("กำลังโหลด...", True, WHITE)
+        # Draw "LOADING" text
+        text = self.large_font.render("LOADING...", True, WHITE)
         text_rect = text.get_rect(center=(self.width // 2, self.height // 2 - 50))
         self.screen.blit(text, text_rect)
 
-        # วาดแถบความคืบหน้า
+        # Draw progress bar
         bar_width = self.width * 0.6
         bar_height = 20
         bar_x = (self.width - bar_width) // 2
         bar_y = self.height // 2
 
-        # กรอบ
+        # Border
         pygame.draw.rect(self.screen, WHITE, (bar_x, bar_y, bar_width, bar_height), 2)
 
-        # ความคืบหน้า
+        # Progress
         progress_width = bar_width * progress
         pygame.draw.rect(
-            self.screen, (0, 200, 255), (bar_x, bar_y, progress_width, bar_height)
+            self.screen, DENSO_RED, (bar_x, bar_y, progress_width, bar_height)
         )
 
-        # อัปเดตหน้าจอ
+        # Update screen
         pygame.display.flip()
 
     def render_text_with_outline(
         self, text, font, color, outline_color, position, outline_width=2
     ):
         """
-        วาดข้อความพร้อมเส้นขอบ
+        Draw text with outline
 
         Args:
-            text (str): ข้อความที่จะวาด
-            font (pygame.font.Font): ฟอนต์
-            color (tuple): สีข้อความ (RGB)
-            outline_color (tuple): สีเส้นขอบ (RGB)
-            position (tuple): ตำแหน่ง (x, y)
-            outline_width (int): ความหนาของเส้นขอบ
+            text (str): Text to draw
+            font (pygame.font.Font): Font
+            color (tuple): Text color (RGB)
+            outline_color (tuple): Outline color (RGB)
+            position (tuple): Position (x, y)
+            outline_width (int): Outline thickness
         """
-        # วาดเส้นขอบ
+        # Draw outline
         for dx in range(-outline_width, outline_width + 1):
             for dy in range(-outline_width, outline_width + 1):
                 if dx != 0 or dy != 0:
                     outline = font.render(text, True, outline_color)
                     self.screen.blit(outline, (position[0] + dx, position[1] + dy))
 
-        # วาดข้อความหลัก
+        # Draw main text
         main_text = font.render(text, True, color)
         self.screen.blit(main_text, position)
 
@@ -351,29 +362,33 @@ class Renderer:
         text,
         font,
         color=(255, 255, 255),
-        bg_color=(50, 50, 50),
+        bg_color=DENSO_RED,
         highlight=False,
     ):
         """
-        วาดปุ่มกด
+        Draw a button
 
         Args:
-            rect (pygame.Rect): ขอบเขตของปุ่ม
-            text (str): ข้อความบนปุ่ม
-            font (pygame.font.Font): ฟอนต์
-            color (tuple): สีข้อความ (RGB)
-            bg_color (tuple): สีพื้นหลัง (RGB)
-            highlight (bool): ไฮไลท์หรือไม่
+            rect (pygame.Rect): Button boundaries
+            text (str): Button text
+            font (pygame.font.Font): Font
+            color (tuple): Text color (RGB)
+            bg_color (tuple): Background color (RGB)
+            highlight (bool): Highlight or not
 
         Returns:
-            pygame.Rect: ขอบเขตของปุ่ม
+            pygame.Rect: Button boundaries
         """
-        # วาดพื้นหลังปุ่ม
+        # Draw button background
         if highlight:
-            # สีไฮไลท์
+            # Highlight color
             pygame.draw.rect(
                 self.screen,
-                (bg_color[0] + 50, bg_color[1] + 50, bg_color[2] + 50),
+                (
+                    min(255, bg_color[0] + 50),
+                    min(255, bg_color[1] + 50),
+                    min(255, bg_color[2] + 50),
+                ),
                 rect,
             )
             pygame.draw.rect(self.screen, (255, 255, 255), rect, 2)
@@ -381,7 +396,7 @@ class Renderer:
             pygame.draw.rect(self.screen, bg_color, rect)
             pygame.draw.rect(self.screen, (150, 150, 150), rect, 2)
 
-        # วาดข้อความ
+        # Draw text
         text_surf = font.render(text, True, color)
         text_rect = text_surf.get_rect(center=rect.center)
         self.screen.blit(text_surf, text_rect)

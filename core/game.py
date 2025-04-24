@@ -14,6 +14,7 @@ import logging
 import math  # เพิ่มบรรทัดนี้
 from pygame.locals import *  # เพิ่มบรรทัดนี้
 
+
 from core.constants import (
     BOARD_WIDTH,
     BOARD_HEIGHT,
@@ -191,23 +192,23 @@ class Game:
         """
         if self.state == STATE_GAME_OVER:
             # จัดการการกดปุ่มในสถานะเกมจบ
-            if event.type == KEYDOWN:
-                if event.key == K_RETURN:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
                     # กลับไปที่เมนูหลัก
                     return True
             return False
 
         if self.state == STATE_PAUSED:
             # จัดการการกดปุ่มในสถานะหยุดชั่วคราว
-            if event.type == KEYDOWN:
-                if event.key == K_p or event.key == K_ESCAPE:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_p or event.key == pygame.K_ESCAPE:
                     # กลับไปเล่นต่อ
                     self.state = STATE_PLAYING
                     self.sound_manager.play_sound("menu_select")
                     return True
             return False
 
-        if event.type == KEYDOWN:
+        if event.type == pygame.KEYDOWN:
             # ตรวจสอบการกดปุ่ม
             for action, keys in self.keys.items():
                 if event.key in keys:
@@ -236,7 +237,7 @@ class Game:
 
                     return True
 
-        elif event.type == KEYUP:
+        elif event.type == pygame.KEYUP:
             # ตรวจสอบการปล่อยปุ่ม
             for action, keys in self.keys.items():
                 if event.key in keys:

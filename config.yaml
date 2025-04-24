@@ -1,22 +1,22 @@
-# Modern Tetris Configuration File
+# DENSO Tetris Configuration File
 
-# ตั้งค่าหน้าจอ
+# Screen settings - Optimized for 14" notebook
 screen:
-  width: 800
-  height: 800
+  width: 720
+  height: 680
   fullscreen: false
   vsync: true
   target_fps: 60
 
-# ตั้งค่าเกม
+# Game settings
 game:
   difficulty: medium # easy, medium, hard
   start_level: 1
   max_level: 20
-  level_up_lines: 10 # จำนวนแถวที่ต้องทำลายเพื่อเลื่อนระดับ
+  level_up_lines: 10 # lines required to level up
   das_delay: 170 # Delayed Auto Shift (milliseconds)
   arr_delay: 30 # Auto Repeat Rate (milliseconds)
-  gravity_table: # ความเร็วตกของบล็อคในแต่ละระดับ (frames per cell)
+  gravity_table: # falling speed of blocks per level (frames per cell)
     1: 60
     2: 50
     3: 40
@@ -38,32 +38,32 @@ game:
     19: 1
     20: 1
 
-# ตั้งค่าบล็อก
+# Block settings
 tetromino:
-  ghost_piece: true # แสดงเงาบล็อกด้านล่าง
-  enable_hold: true # เปิดใช้งานการเก็บบล็อก
-  enable_preview: true # เปิดใช้งานการแสดงบล็อกถัดไป
-  preview_count: 5 # จำนวนบล็อกที่แสดงในตัวอย่าง
-  spin_bonus: true # โบนัสสำหรับการหมุนพิเศษ
+  ghost_piece: true # show ghost piece at bottom
+  enable_hold: true # enable hold feature
+  enable_preview: true # enable next block preview
+  preview_count: 3 # number of blocks to show in preview (reduced for clean look)
+  spin_bonus: true # bonus for special spins
 
-# ตั้งค่ากราฟิก
+# Graphics settings - Elegant minimalist theme
 graphics:
-  theme: 'neon' # default, neon, retro, minimalist
-  particles: true # เปิดใช้งานเอฟเฟกต์อนุภาค
-  animations: true # เปิดใช้งานแอนิเมชัน
-  shaders: true # เปิดใช้งาน shader effects
-  bloom_effect: true # เปิดใช้งานเอฟเฟกต์บลูม (เรืองแสง)
-  shake_effect: true # เปิดใช้งานเอฟเฟกต์สั่น
-  trail_effect: true # เอฟเฟกต์ทิ้งร่องรอย
+  theme: 'denso' # default, denso, retro, minimalist
+  particles: true # enable particle effects
+  animations: true # enable animations
+  shaders: true # enable shader effects
+  bloom_effect: true # enable bloom effect
+  shake_effect: true # enable shake effect
+  trail_effect: false # trail effect disabled for cleaner look
 
-# ตั้งค่าเสียง
+# Audio settings
 audio:
-  music_volume: 0.7
-  sfx_volume: 0.8
+  music_volume: 0.6
+  sfx_volume: 0.7
   enable_music: true
   enable_sfx: true
 
-# ตั้งค่าการควบคุม
+# Control settings
 controls:
   keyboard:
     move_left: [K_LEFT, K_a]
@@ -77,7 +77,7 @@ controls:
 
   joystick:
     enabled: true
-    move_left: 0 # ค่า axis หรือปุ่ม
+    move_left: 0 # axis or button value
     move_right: 1
     soft_drop: 2
     hard_drop: 3
@@ -86,7 +86,7 @@ controls:
     hold: 6
     pause: 7
 
-# ตั้งค่าฐานข้อมูล
+# Database settings
 database:
   engine: 'sqlite' # sqlite, mysql, postgresql
   sqlite:
@@ -104,17 +104,19 @@ database:
     password: 'tetris_password'
     database: 'tetris_db'
 
-# ตั้งค่า UI
+# UI settings - Optimized for 14" notebook
 ui:
-  font: 'Kanit' # ชื่อฟอนต์
-  language: 'th' # th, en
+  font: 'arial' # font name
+  language: 'en' # en
   show_fps: true
   show_ghost_piece: true
   show_grid: true
   show_next_pieces: true
   menu_animations: true
+  button_style: 'minimal' # minimal, rounded, classic
+  color_scheme: 'dark' # dark, light
 
-# ตั้งค่าระบบรางวัล
+# Achievement system
 achievements:
   enabled: true
   notifications: true

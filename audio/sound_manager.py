@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """
-Modern Tetris - Sound Manager
+DENSO Tetris - Sound Manager
 ---------------------------
-คลาสสำหรับจัดการเสียงและเพลงในเกม
+Class for managing game sounds and music
 """
 
 import os
@@ -16,39 +16,39 @@ from utils.logger import get_logger
 
 
 class SoundManager:
-    """คลาสสำหรับจัดการเสียงและเพลงในเกม"""
+    """Class for managing game sounds and music"""
 
     def __init__(self, config):
         """
-        สร้างตัวจัดการเสียงใหม่
+        Create a new sound manager
 
         Args:
-            config (dict): การตั้งค่าเกม
+            config (dict): Game configuration
         """
         self.config = config
         self.logger = get_logger()
 
-        # ตรวจสอบว่า pygame.mixer ถูกเริ่มต้นแล้วหรือไม่
+        # Check if pygame.mixer is initialized
         if not pygame.mixer.get_init():
             try:
                 pygame.mixer.init()
             except Exception as e:
-                self.logger.error(f"ไม่สามารถเริ่มต้น pygame.mixer ได้: {e}")
+                self.logger.error(f"Could not initialize pygame.mixer: {e}")
                 return
 
-        # ตั้งค่าระดับเสียง
+        # Set volume levels
         self.music_volume = config["audio"]["music_volume"]
         self.sfx_volume = config["audio"]["sfx_volume"]
 
-        # โหลดเสียงเอฟเฟกต์ทั้งหมด
+        # Load all sound effects
         self.sounds = {}
         self._load_sounds()
 
-        # ตัวแปรสำหรับเพลง
+        # Variable for music
         self.current_music = None
 
     def _load_sounds(self):
-        """โหลดไฟล์เสียงทั้งหมด"""
+        """Load all sound files"""
         try:
             for sound_name, file_name in SOUND_FILES.items():
                 file_path = os.path.join(SOUNDS_DIR, file_name)
@@ -57,16 +57,16 @@ class SoundManager:
                     self.sounds[sound_name] = pygame.mixer.Sound(file_path)
                     self.sounds[sound_name].set_volume(self.sfx_volume)
                 else:
-                    self.logger.warning(f"ไม่พบไฟล์เสียง: {file_path}")
+                    self.logger.warning(f"Sound file not found: {file_path}")
         except Exception as e:
-            self.logger.error(f"เกิดข้อผิดพลาดในการโหลดไฟล์เสียง: {e}")
+            self.logger.error(f"Error loading sound files: {e}")
 
     def play_sound(self, sound_name):
         """
-        เล่นเสียงเอฟเฟกต์
+        Play a sound effect
 
         Args:
-            sound_name (str): ชื่อเสียง (จาก SOUND_FILES)
+            sound_name (str): Sound name (from SOUND_FILES)
         """
         if not self.config["audio"]["enable_sfx"]:
             return
@@ -75,21 +75,21 @@ class SoundManager:
             try:
                 self.sounds[sound_name].play()
             except Exception as e:
-                self.logger.error(f"เกิดข้อผิดพลาดในการเล่นเสียง {sound_name}: {e}")
+                self.logger.error(f"Error playing sound {sound_name}: {e}")
         else:
-            self.logger.warning(f"ไม่พบเสียง {sound_name}")
+            self.logger.warning(f"Sound {sound_name} not found")
 
     def play_music(self, music_name):
         """
-        เล่นเพลงพื้นหลัง
+        Play background music
 
         Args:
-            music_name (str): ชื่อเพลง (จาก MUSIC_FILES)
+            music_name (str): Music name (from MUSIC_FILES)
         """
         if not self.config["audio"]["enable_music"]:
             return
 
-        # ไม่เล่นซ้ำถ้าเป็นเพลงเดียวกัน
+        # Don't replay if it's the same music
         if self.current_music == music_name:
             return
 
@@ -101,59 +101,59 @@ class SoundManager:
                 if os.path.exists(file_path):
                     pygame.mixer.music.load(file_path)
                     pygame.mixer.music.set_volume(self.music_volume)
-                    pygame.mixer.music.play(-1)  # วนซ้ำไม่จำกัด
+                    pygame.mixer.music.play(-1)  # Loop indefinitely
                     self.current_music = music_name
                 else:
-                    self.logger.warning(f"ไม่พบไฟล์เพลง: {file_path}")
+                    self.logger.warning(f"Music file not found: {file_path}")
             except Exception as e:
-                self.logger.error(f"เกิดข้อผิดพลาดในการเล่นเพลง {music_name}: {e}")
+                self.logger.error(f"Error playing music {music_name}: {e}")
         else:
-            self.logger.warning(f"ไม่พบเพลง {music_name}")
+            self.logger.warning(f"Music {music_name} not found")
 
     def stop_music(self):
-        """หยุดเพลงปัจจุบัน"""
+        """Stop current music"""
         try:
             pygame.mixer.music.stop()
             self.current_music = None
         except Exception as e:
-            self.logger.error(f"เกิดข้อผิดพลาดในการหยุดเพลง: {e}")
+            self.logger.error(f"Error stopping music: {e}")
 
     def pause_music(self):
-        """หยุดเพลงชั่วคราว"""
+        """Pause music temporarily"""
         try:
             pygame.mixer.music.pause()
         except Exception as e:
-            self.logger.error(f"เกิดข้อผิดพลาดในการหยุดเพลงชั่วคราว: {e}")
+            self.logger.error(f"Error pausing music: {e}")
 
     def unpause_music(self):
-        """เล่นเพลงต่อ"""
+        """Resume music"""
         try:
             pygame.mixer.music.unpause()
         except Exception as e:
-            self.logger.error(f"เกิดข้อผิดพลาดในการเล่นเพลงต่อ: {e}")
+            self.logger.error(f"Error resuming music: {e}")
 
     def set_music_volume(self, volume):
         """
-        ตั้งค่าระดับเสียงเพลง
+        Set music volume
 
         Args:
-            volume (float): ระดับเสียง (0.0 - 1.0)
+            volume (float): Volume level (0.0 - 1.0)
         """
         self.music_volume = max(0.0, min(1.0, volume))
         try:
             pygame.mixer.music.set_volume(self.music_volume)
         except Exception as e:
-            self.logger.error(f"เกิดข้อผิดพลาดในการตั้งค่าระดับเสียงเพลง: {e}")
+            self.logger.error(f"Error setting music volume: {e}")
 
     def set_sfx_volume(self, volume):
         """
-        ตั้งค่าระดับเสียงเอฟเฟกต์
+        Set sound effects volume
 
         Args:
-            volume (float): ระดับเสียง (0.0 - 1.0)
+            volume (float): Volume level (0.0 - 1.0)
         """
         self.sfx_volume = max(0.0, min(1.0, volume))
 
-        # ปรับระดับเสียงของทุกเอฟเฟกต์
+        # Adjust volume for all effects
         for sound in self.sounds.values():
             sound.set_volume(self.sfx_volume)

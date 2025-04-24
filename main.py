@@ -2,9 +2,10 @@
 # -*- coding: utf-8 -*-
 
 """
-Modern Tetris - Main Application
+DENSO Tetris - Main Application
 -------------------------------
-เกม Tetris สมัยใหม่ที่มีเอฟเฟกต์สวยงามและระบบการเก็บสถิติผู้เล่น
+A modern Tetris game with minimalist design
+Copyright (c) 2025 Thammaphon Chittasuwanna (SDM)
 """
 
 import os
@@ -16,76 +17,107 @@ from pygame.locals import *
 
 # Import internal modules
 from core.game import Game
-from core.constants import SCREEN_WIDTH, SCREEN_HEIGHT, TITLE
+from core.constants import SCREEN_WIDTH, SCREEN_HEIGHT, TITLE, UI_BG
 from ui.menu import MainMenu
 from utils.logger import setup_logger
 from db.session import init_db
 
 
 def load_config():
-    """โหลดไฟล์การตั้งค่าจาก config.yaml"""
+    """Load configuration from config.yaml"""
     try:
         with open("config.yaml", "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
     except Exception as e:
-        logging.error(f"ไม่สามารถโหลดไฟล์ config: {e}")
+        logging.error(f"Could not load config file: {e}")
         return {}
 
 
 def main():
-    """ฟังก์ชันหลักของโปรแกรม"""
-    # ตั้งค่า logging
+    """Main function of the application"""
+    # Setup logging
     setup_logger()
     logger = logging.getLogger("tetris")
-    logger.info("เริ่มต้นแอปพลิเคชัน Modern Tetris")
+    logger.info("Starting DENSO Tetris application")
 
-    # โหลดไฟล์การตั้งค่า
+    # Load configuration
     config = load_config()
 
-    # เตรียมฐานข้อมูล
+    # Initialize database
     init_db()
 
-    # เริ่มต้น Pygame
+    # Initialize Pygame
     pygame.init()
     pygame.mixer.init()
 
-    # ตั้งค่าหน้าต่าง
+    # Setup window - Windowed mode optimized for 14" notebook
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pygame.display.set_caption(TITLE)
 
-    # ตั้งค่า Clock สำหรับควบคุม FPS
+    # Set window icon
+    try:
+        icon = pygame.image.load("assets/images/icon.png")
+        pygame.display.set_icon(icon)
+    except:
+        logger.warning("Could not load game icon")
+
+    # Set custom cursor (simple, elegant)
+    try:
+        cursor_img = pygame.image.load("assets/images/cursor.png")
+        cursor = pygame.cursors.Cursor((0, 0), cursor_img)
+        pygame.mouse.set_cursor(cursor)
+    except:
+        # Default to system cursor if custom one not available
+        pass
+
+    # Setup Clock for FPS control
     clock = pygame.time.Clock()
 
-    # สร้าง MainMenu
+    # Create MainMenu
     main_menu = MainMenu(screen, config)
 
-    # เริ่มต้นลูปหลัก
+    # Start main loop
     running = True
     current_scene = main_menu
 
-    while running:
-        dt = clock.tick(60) / 1000.0  # แปลงเป็นวินาทีเพื่อให้ง่ายต่อการคำนวณ
+    # For smooth framerate
+    accumulated_time = 0
+    fixed_time_step = 1.0 / config["screen"]["target_fps"]
 
-        # ตรวจสอบอินพุต
-        for event in pygame.event.get():
+    while running:
+        # Calculate delta time with scaling for consistent gameplay
+        dt = min(clock.tick(config["screen"]["target_fps"]) / 1000.0, 0.1)
+        accumulated_time += dt
+
+        # Process inputs
+        events = pygame.event.get()
+        for event in events:
             if event.type == pygame.QUIT:
                 running = False
             current_scene.handle_event(event)
 
-        # อัปเดตสถานะ
-        next_scene = current_scene.update(dt)
-        if next_scene:
-            # เปลี่ยนซีนถ้ามีการร้องขอ
-            current_scene = next_scene
+        # Fixed update steps for consistent physics
+        while accumulated_time >= fixed_time_step:
+            # Update state
+            next_scene = current_scene.update(fixed_time_step)
+            if next_scene:
+                # Change scene if requested
+                current_scene = next_scene
+                # Reset events to prevent carry-over
+                events.clear()
+            accumulated_time -= fixed_time_step
 
-        # วาดกราฟิก
+        # Fill background with base color before rendering
+        screen.fill(UI_BG)
+
+        # Render graphics
         current_scene.render()
 
-        # อัปเดตหน้าจอ
+        # Update display
         pygame.display.flip()
 
-    # ทำความสะอาดและปิดโปรแกรม
-    logger.info("กำลังปิดแอปพลิเคชัน")
+    # Clean up and exit
+    logger.info("Closing application")
     pygame.quit()
     sys.exit()
 
