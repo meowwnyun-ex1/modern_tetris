@@ -1,0 +1,8 @@
+pygame==2.6.0
+numpy==1.24.3
+sqlalchemy==2.0.19
+bcrypt==4.0.1
+pygame-particles==1.1
+pygame-shaders==1.0.9
+pyyaml==6.0.1
+pillow==10.0.0
