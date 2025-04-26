@@ -7,7 +7,18 @@ DENSO Tetris - Game UI
 Class for in-game user interface
 """
 
-import pygame
+try:
+    import pygame
+except ImportError:
+    try:
+        import pygame_ce as pygame
+
+        print("ใช้ pygame-ce แทน pygame")
+    except ImportError:
+        print("กรุณาติดตั้ง pygame หรือ pygame-ce")
+        import sys
+
+        sys.exit(1)
 import math
 import time
 

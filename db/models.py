@@ -2,26 +2,26 @@
 # -*- coding: utf-8 -*-
 
 """
-Modern Tetris - Database Models
+DENSO Tetris - Database Models
 -----------------------------
-โมเดลฐานข้อมูลสำหรับการบันทึกสถิติผู้เล่น
+Database models for storing player statistics and game data
 """
 
 import datetime
-from sqlalchemy import Column, Integer, String, Float, DateTime, create_engine
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
 
 
 class User(Base):
-    """โมเดลข้อมูลผู้ใช้"""
+    """User data model"""
 
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
     username = Column(String(50), unique=True, nullable=False)
-    password_hash = Column(String(128), nullable=False)  # เก็บแฮชรหัสผ่าน
+    password_hash = Column(String(128), nullable=False)  # Stored password hash
     created_at = Column(DateTime, default=datetime.datetime.now)
 
     def __repr__(self):
@@ -29,7 +29,7 @@ class User(Base):
 
 
 class GameScore(Base):
-    """โมเดลข้อมูลคะแนนเกม"""
+    """Game score data model"""
 
     __tablename__ = "game_scores"
 
@@ -38,25 +38,27 @@ class GameScore(Base):
     score = Column(Integer, default=0)
     level = Column(Integer, default=1)
     lines_cleared = Column(Integer, default=0)
-    time_played = Column(Float, default=0.0)  # เวลาที่เล่นเป็นวินาที
+    time_played = Column(Float, default=0.0)  # Time played in seconds
+    victory = Column(Boolean, default=False)  # Whether game ended in victory
     timestamp = Column(DateTime, default=datetime.datetime.now)
 
     def __repr__(self):
-        return f"<GameScore(username='{self.username}', score={self.score}, level={self.level})>"
+        victory_str = "Victory" if self.victory else ""
+        return f"<GameScore(username='{self.username}', score={self.score}, level={self.level}{victory_str})>"
 
 
 class GameSettings(Base):
-    """โมเดลข้อมูลการตั้งค่าของผู้เล่น"""
+    """Player settings data model"""
 
     __tablename__ = "game_settings"
 
     id = Column(Integer, primary_key=True)
     username = Column(String(50), nullable=False)
-    theme = Column(String(20), default="neon")
+    theme = Column(String(20), default="denso")
     music_volume = Column(Float, default=0.7)
     sfx_volume = Column(Float, default=0.8)
-    show_ghost = Column(Integer, default=1)  # 1 = เปิด, 0 = ปิด
-    controls = Column(String(500), default="{}")  # เก็บเป็น JSON
+    show_ghost = Column(Integer, default=1)  # 1 = on, 0 = off
+    controls = Column(String(500), default="{}")  # Stored as JSON
     timestamp = Column(DateTime, default=datetime.datetime.now)
 
     def __repr__(self):
@@ -64,7 +66,7 @@ class GameSettings(Base):
 
 
 class Achievement(Base):
-    """โมเดลข้อมูลความสำเร็จ"""
+    """Achievement data model"""
 
     __tablename__ = "achievements"
 
@@ -77,7 +79,3 @@ class Achievement(Base):
 
     def __repr__(self):
         return f"<Achievement(username='{self.username}', achievement='{self.achievement_name}')>"
-
-
-# ความสัมพันธ์ m2m ระหว่าง User และ Achievement สามารถทำได้โดยใช้ ForeignKey
-# แต่สำหรับตัวอย่างนี้เราเก็บด้วย username เพื่อความเรียบง่าย

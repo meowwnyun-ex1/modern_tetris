@@ -49,63 +49,64 @@ def init_db():
     """Initialize database connection and create tables with error handling"""
     global engine, Session
 
-    # โหลดการตั้งค่า
-    db_config = load_db_config()
-    db_engine = db_config.get("engine", "sqlite")
-
     try:
-        # สร้าง database URI
+        # Load config
+        db_config = load_db_config()
+        db_engine = db_config.get("engine", "sqlite")
+
+        # Create database URI
         if db_engine == "sqlite":
             db_path = db_config["sqlite"]["path"]
 
-            # สร้างไดเร็กทอรีถ้าไม่มี
+            # Create directory if needed
             db_dir = os.path.dirname(os.path.abspath(db_path))
             os.makedirs(db_dir, exist_ok=True)
 
-            db_uri = f"sqlite:///{db_path}"
-
-            # ตรวจสอบว่าสามารถเขียนไปยังตำแหน่งนี้ได้หรือไม่
+            # Test SQLite access
             try:
-                # ทดสอบว่าสามารถเปิดฐานข้อมูล SQLite ได้
                 temp_conn = sqlite3.connect(db_path)
                 temp_conn.close()
+                db_uri = f"sqlite:///{db_path}"
             except Exception as e:
-                logger.error(f"ไม่สามารถเข้าถึงฐานข้อมูล SQLite ที่ {db_path}: {e}")
-                # ใช้ฐานข้อมูลในหน่วยความจำแทน
+                logger.error(f"Cannot access SQLite at {db_path}: {e}")
                 db_uri = "sqlite:///:memory:"
-                logger.warning("เปลี่ยนไปใช้ฐานข้อมูล SQLite ในหน่วยความจำแทน")
+                logger.warning("Using in-memory SQLite as fallback")
 
-        # สร้าง Engine พร้อมการจัดการพูลการเชื่อมต่อ
+        # Create engine with connection pool
         engine = create_engine(
             db_uri,
             connect_args={"check_same_thread": False} if db_engine == "sqlite" else {},
-            echo=False,  # Set to True for SQL debugging
+            poolclass=QueuePool,
+            pool_size=5,
+            max_overflow=10,
+            echo=False,
         )
 
-        # สร้างตาราง
+        # Create tables
         try:
             Base.metadata.create_all(engine)
         except Exception as e:
-            logger.error(f"เกิดข้อผิดพลาดในการสร้างตารางฐานข้อมูล: {e}")
+            logger.error(f"Error creating database tables: {e}")
+            raise
 
-        # สร้าง session factory
+        # Create session factory
         session_factory = sessionmaker(bind=engine)
         Session = scoped_session(session_factory)
 
-        logger.info(f"เชื่อมต่อกับฐานข้อมูล: {db_engine}")
         return True
+
     except Exception as e:
-        logger.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อกับฐานข้อมูล: {e}")
-        # ใช้ SQLite in-memory เป็น fallback
+        logger.error(f"Database initialization error: {e}")
+        # Try in-memory SQLite as last resort
         try:
             engine = create_engine("sqlite:///:memory:")
             Base.metadata.create_all(engine)
             session_factory = sessionmaker(bind=engine)
             Session = scoped_session(session_factory)
-            logger.warning("ใช้ฐานข้อมูล SQLite ในหน่วยความจำเป็น fallback")
+            logger.warning("Using in-memory SQLite database")
             return True
-        except:
-            logger.critical("ไม่สามารถสร้างฐานข้อมูลสำรองได้")
+        except Exception as e2:
+            logger.critical(f"Could not create fallback database: {e2}")
             return False
 
 
@@ -166,18 +167,11 @@ def get_session():
 
 
 def close_session(session):
-    """Close database session safely"""
     if session:
         try:
             session.commit()
         except Exception as e:
             logger.error(f"Error committing session: {e}")
-            try:
-                session.rollback()
-            except:
-                pass
+            session.rollback()
         finally:
-            try:
-                session.close()
-            except Exception as e:
-                logger.error(f"Error closing session: {e}")
+            session.close()

@@ -8,7 +8,19 @@ Class for managing game sounds and music with improved error handling
 """
 
 import os
-import pygame
+
+try:
+    import pygame
+except ImportError:
+    try:
+        import pygame_ce as pygame
+
+        print("ใช้ pygame-ce แทน pygame")
+    except ImportError:
+        print("กรุณาติดตั้ง pygame หรือ pygame-ce")
+        import sys
+
+        sys.exit(1)
 import logging
 import time
 
@@ -95,26 +107,29 @@ class SoundManager:
             self.logger.error(f"Error loading sound files: {e}")
             # Continue without sound effects rather than crashing
 
-    # แก้ไขเมธอด play_sound ใน SoundManager
+    def play_sound(self, sound_name):
+        """
+        Play a sound effect
 
+        Args:
+            sound_name (str): Name of the sound to play
+        """
+        if not self.initialized or not self.config["audio"]["enable_sfx"]:
+            return
 
-def play_sound(self, sound_name):
-    if not self.initialized or not self.config["audio"]["enable_sfx"]:
-        return
-
-    try:
-        if sound_name in self.sounds:
-            # ตรวจสอบว่าเป็น Sound object ที่ถูกต้องหรือไม่
-            if hasattr(self.sounds[sound_name], "play"):
-                self.sounds[sound_name].play()
+        try:
+            if sound_name in self.sounds:
+                # Check if it's a valid Sound object
+                if hasattr(self.sounds[sound_name], "play"):
+                    self.sounds[sound_name].play()
+                else:
+                    # Create dummy sound if not a Sound object
+                    self.sounds[sound_name] = pygame.mixer.Sound(buffer=bytearray(32))
+                    self.sounds[sound_name].set_volume(0)
             else:
-                # สร้าง dummy sound ถ้าไม่ใช่ Sound object
-                self.sounds[sound_name] = pygame.mixer.Sound(buffer=bytearray(32))
-                self.sounds[sound_name].set_volume(0)
-        else:
-            self.logger.warning(f"Sound '{sound_name}' not found")
-    except Exception as e:
-        self.logger.warning(f"Error playing sound {sound_name}: {e}")
+                self.logger.warning(f"Sound '{sound_name}' not found")
+        except Exception as e:
+            self.logger.warning(f"Error playing sound {sound_name}: {e}")
 
     def play_music(self, music_name):
         """

@@ -8,7 +8,19 @@ Modern Tetris - Tetromino Class
 """
 
 import random
-import pygame
+
+try:
+    import pygame
+except ImportError:
+    try:
+        import pygame_ce as pygame
+
+        print("ใช้ pygame-ce แทน pygame")
+    except ImportError:
+        print("กรุณาติดตั้ง pygame หรือ pygame-ce")
+        import sys
+
+        sys.exit(1)
 from core.constants import (
     TETROMINO_SHAPES,
     TETROMINO_COLORS,

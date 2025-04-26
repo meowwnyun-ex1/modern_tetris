@@ -7,12 +7,23 @@ DENSO Tetris - Menu UI
 Classes for main menu and submenus with modern design
 """
 
-import pygame
-import logging
-import random
-import math
+# Standard library imports
 import os
+import sys
+import math
 import time
+import random
+
+try:
+    import pygame
+except ImportError:
+    try:
+        import pygame_ce as pygame
+        print("ใช้ pygame-ce แทน pygame")
+    except ImportError:
+        print("กรุณาติดตั้ง pygame หรือ pygame-ce")
+        sys.exit(1)
+
 from pygame.locals import (
     KEYDOWN,
     MOUSEBUTTONDOWN,
@@ -1985,10 +1996,7 @@ class MainMenu:
             # Draw setting value with DENSO red for emphasis
             value_text = self.medium_font.render(value, True, UI_HIGHLIGHT)
             value_rect = value_text.get_rect(
-                midright=(
-                    card_x + card_width - 30,
-                    y_pos + label_text.get_height() // 2,
-                )
+                midright=(card_x + card_width - 30, y_pos + label_text.get_height() // 2)
             )
             surface.blit(value_text, value_rect)
 
@@ -2055,12 +2063,12 @@ class MainMenu:
         surface.blit(rank_text, rank_rect)
 
         name_text = self.medium_font.render("Player", True, UI_HIGHLIGHT)
-        name_rect = name_text.get_rect(center=(card_x + 200, header_y + 25))
+        name_rect = name_text.get_rect(center=(card_x + 200, header_y + 25))  # Fixed
         surface.blit(name_text, name_rect)
 
         score_text = self.medium_font.render("Score", True, UI_HIGHLIGHT)
         score_rect = score_text.get_rect(center=(card_x + 380, header_y + 25))
-        surface.blit(score_text, score_rect)
+        surface.blit(score_text, score_rect)  # Fixed
 
         level_text = self.medium_font.render("Level", True, UI_HIGHLIGHT)
         level_rect = level_text.get_rect(center=(card_x + 520, header_y + 25))
@@ -2122,7 +2130,7 @@ class MainMenu:
 
                 # Player name
                 name_color = DENSO_RED if score.username == self.username else UI_TEXT
-                name = self.medium_font.render(score.username, True, name_color)
+                name = self.medium_font.render(score.username, True, name_color
                 name_rect = name.get_rect(centerx=card_x + 200, centery=y_pos + 15)
                 surface.blit(name, name_rect)
 

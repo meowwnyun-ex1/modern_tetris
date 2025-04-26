@@ -7,7 +7,18 @@ Modern Tetris - Board Class
 คลาสนี้จัดการเกี่ยวกับบอร์ดเกมและการปฏิสัมพันธ์กับเตโตรมิโน
 """
 
-import pygame
+try:
+    import pygame
+except ImportError:
+    try:
+        import pygame_ce as pygame
+
+        print("ใช้ pygame-ce แทน pygame")
+    except ImportError:
+        print("กรุณาติดตั้ง pygame หรือ pygame-ce")
+        import sys
+
+        sys.exit(1)
 import random
 from core.constants import (
     BOARD_WIDTH,
@@ -174,29 +185,20 @@ class Board:
         return result
 
     def check_collision(self, tetromino, x, y):
-        """
-        ตรวจสอบการชนระหว่างบล็อกเตโตรมิโนและบอร์ดหรือขอบบอร์ด
-
-        Args:
-            tetromino (Tetromino): บล็อกเตโตรมิโนที่ตรวจสอบ
-            x (int): ตำแหน่ง x ที่จะตรวจสอบ
-            y (int): ตำแหน่ง y ที่จะตรวจสอบ
-
-        Returns:
-            bool: True ถ้ามีการชน, False ถ้าไม่มีการชน
-        """
-        # ตรวจสอบแต่ละช่องของบล็อกเตโตรมิโน
+        """Check collision between tetromino and board"""
+        # Check each cell of the tetromino
         for block_x, block_y in tetromino.shape[tetromino.rotation]:
             grid_x = x + block_x
             grid_y = y + block_y
 
-            # ตรวจสอบขอบบอร์ด
+            # Check board boundaries including top
             if grid_x < 0 or grid_x >= self.width or grid_y >= self.height:
                 return True
 
-            # ตรวจสอบการชนกับบล็อกอื่น (ถ้าไม่ใช่ด้านบนบอร์ด)
-            if grid_y >= 0 and self.grid[grid_y][grid_x] is not None:
-                return True
+            # Only check collision with other blocks if within board
+            if grid_y >= 0:
+                if self.grid[grid_y][grid_x] is not None:
+                    return True
 
         return False
 
@@ -258,75 +260,45 @@ class Board:
         return False
 
     def render(self, surface):
-        """
-        วาดบอร์ดทั้งหมดลงบนพื้นผิวที่กำหนด
-
-        Args:
-            surface (pygame.Surface): พื้นผิวที่จะวาด
-        """
-        # วาดขอบบอร์ด
+        """Render the board"""
+        # Draw border
         surface.blit(self.border_surface, (self.x - GRID_SIZE, self.y - GRID_SIZE))
 
-        # รีเซ็ตพื้นผิวบอร์ด
+        # Reset surfaces
         self.board_surface.fill(BLACK)
-        self.glow_surface.fill((0, 0, 0, 0))  # โปร่งใส
+        self.glow_surface.fill((0, 0, 0, 0))
 
-        # วาดเส้นตาราง (ถ้าเปิดใช้งาน)
+        # Draw grid
         self.board_surface.blit(self.grid_surface, (0, 0))
 
-        # วาดบล็อกที่ล็อคแล้ว
+        # Draw locked blocks
         for y in range(self.height):
             for x in range(self.width):
                 color = self.grid[y][x]
                 if color:
-                    # วาดบล็อก
+                    # Draw block
                     rect = pygame.Rect(
                         x * GRID_SIZE, y * GRID_SIZE, GRID_SIZE, GRID_SIZE
                     )
                     pygame.draw.rect(self.board_surface, color, rect)
                     pygame.draw.rect(self.board_surface, WHITE, rect, 1)
 
-                    # วาดเอฟเฟกต์เรืองแสง
-                    glow_color = (*color, 64)  # เพิ่มค่า alpha
-                    center = (
-                        x * GRID_SIZE + GRID_SIZE // 2,
-                        y * GRID_SIZE + GRID_SIZE // 2,
-                    )
-                    pygame.draw.circle(
-                        self.glow_surface, glow_color, center, GRID_SIZE - 5
-                    )
-
-        # วาดเอฟเฟกต์การล้างแถว
-        if self.clearing_lines and self.clearing_effect > 0:
-            for line in self.clearing_lines:
-                # คำนวณเอฟเฟกต์แอนิเมชัน
-                effect_width = int(self.width * GRID_SIZE * self.clearing_effect)
-                effect_x = (self.width * GRID_SIZE - effect_width) // 2
-
-                # สร้างพื้นผิวสำหรับเอฟเฟกต์
-                line_effect = pygame.Surface((effect_width, GRID_SIZE), pygame.SRCALPHA)
-                line_effect.fill((255, 255, 255, 200))  # สีขาวโปร่งแสง
-
-                # วาดเอฟเฟกต์เรืองแสง
-                glow_effect = pygame.Surface(
-                    (self.width * GRID_SIZE, GRID_SIZE), pygame.SRCALPHA
-                )
-                for i in range(5):
-                    # สร้างเส้นเรืองแสงหลาย ๆ เส้นด้วยความโปร่งใสต่างกัน
-                    intensity = 150 - (i * 30)
-                    if intensity < 0:
-                        break
-                    glow_y = line * GRID_SIZE + (i - 2) * 2
-                    if 0 <= glow_y < self.height * GRID_SIZE:
-                        pygame.draw.line(
-                            self.glow_surface,
-                            (255, 255, 255, intensity),
-                            (0, glow_y),
-                            (self.width * GRID_SIZE, glow_y),
-                            3 - i if i < 3 else 1,
+                    # Draw glow effect
+                    if self.config["graphics"].get("bloom_effect", True):
+                        glow_color = (*color, 64)
+                        center = (
+                            x * GRID_SIZE + GRID_SIZE // 2,
+                            y * GRID_SIZE + GRID_SIZE // 2,
+                        )
+                        pygame.draw.circle(
+                            self.glow_surface, glow_color, center, GRID_SIZE - 5
                         )
 
-        # วาดบอร์ดและเอฟเฟกต์เรืองแสงบนพื้นผิวหลัก
+        # Draw line clear effect
+        if self.clearing_lines and self.clearing_effect > 0:
+            self._render_line_clear_effect()
+
+        # Blit surfaces
         surface.blit(self.board_surface, (self.x, self.y))
         surface.blit(
             self.glow_surface, (self.x, self.y), special_flags=pygame.BLEND_ADD

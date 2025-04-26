@@ -12,22 +12,44 @@ import os
 import sys
 import yaml
 import logging
-import pygame
+
+try:
+    import pygame
+except ImportError:
+    try:
+        import pygame_ce as pygame
+
+        print("ใช้ pygame-ce แทน pygame")
+    except ImportError:
+        print("กรุณาติดตั้ง pygame หรือ pygame-ce")
+        import sys
+
+        sys.exit(1)
 import traceback
 import time
 from pygame.locals import *
 
 # Import internal modules
-from core.game import Game
-from core.constants import SCREEN_WIDTH, SCREEN_HEIGHT, TITLE, UI_BG, DENSO_RED
-from ui.menu import MainMenu
-from utils.logger import setup_logger
-from db.session import init_db
+try:
+    from core.game import Game
+    from core.constants import (
+        SCREEN_WIDTH,
+        SCREEN_HEIGHT,
+        DENSO_RED,
+        TITLE,
+        UI_BG,
+    )  # Fix missing constants
+    from ui.menu import MainMenu
+    from utils.logger import setup_logger
+    from db.session import init_db
+except ImportError as e:
+    print(f"Error importing modules: {e}")
+    sys.exit(1)
 
 
 def ensure_assets_directory():
     """Ensure all required directories exist with improved asset creation"""
-    # สร้างโครงสร้างไดเร็กทอรีที่จำเป็น
+    # Create required directory structure
     required_dirs = [
         "assets",
         "assets/images",
@@ -40,13 +62,13 @@ def ensure_assets_directory():
     for directory in required_dirs:
         os.makedirs(directory, exist_ok=True)
 
-    # สร้างไฟล์ assets ที่จำเป็นแบบทยอยสร้าง
+    # Create minimal required assets
     create_important_assets()
 
 
 def create_important_assets():
     """Create minimal required assets to prevent errors"""
-    # สร้างไอคอนขนาดเล็ก
+    # Create small icon
     icon_path = "assets/images/icon.png"
     if not os.path.exists(icon_path):
         try:
@@ -58,11 +80,19 @@ def create_important_assets():
         except Exception as e:
             logger.error(f"Could not create icon: {e}")
 
-    # สร้างไฟล์ dummy สำหรับเสียงหลัก
+    # Create dummy files for essential sounds
     try:
         create_empty_sound("assets/sounds/menu_select.wav")
         create_empty_sound("assets/sounds/game_over.wav")
         create_empty_sound("assets/sounds/menu_theme.mp3")
+        create_empty_sound("assets/sounds/game_theme.mp3")
+        create_empty_sound("assets/sounds/move.wav")
+        create_empty_sound("assets/sounds/rotate.wav")
+        create_empty_sound("assets/sounds/drop.wav")
+        create_empty_sound("assets/sounds/clear.wav")
+        create_empty_sound("assets/sounds/tetris.wav")
+        create_empty_sound("assets/sounds/level_up.wav")
+        create_empty_sound("assets/sounds/menu_change.wav")
     except Exception as e:
         logger.error(f"Could not create dummy sounds: {e}")
 
@@ -76,16 +106,16 @@ def create_empty_sound(filename):
         directory = os.path.dirname(filename)
         os.makedirs(directory, exist_ok=True)
 
-        # สร้างไฟล์เปล่า
+        # Create empty file with simple header
         with open(filename, "wb") as f:
-            # เขียนข้อมูลเปล่าหรือ header อย่างง่าย
+            # Write minimal header based on file type
             if filename.endswith(".wav"):
-                # สร้าง WAV header อย่างง่าย
+                # Simple WAV header
                 f.write(
                     b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00"
                 )
             else:
-                # สร้างไฟล์เปล่าสำหรับไฟล์อื่นๆ
+                # Empty file for other types
                 f.write(b"\x00" * 32)
 
         logger.info(f"Created dummy sound file: {filename}")
@@ -107,11 +137,15 @@ def load_config():
             "difficulty": "medium",
             "start_level": 1,
             "max_level": 20,
+            "level_up_lines": 10,
+            "das_delay": 170,
+            "arr_delay": 30,
         },
         "graphics": {
             "theme": "denso",
             "particles": True,
             "animations": True,
+            "bloom_effect": True,
         },
         "audio": {
             "music_volume": 0.6,
@@ -119,10 +153,18 @@ def load_config():
             "enable_music": True,
             "enable_sfx": True,
         },
+        "tetromino": {
+            "ghost_piece": True,
+            "enable_hold": True,
+            "enable_preview": True,
+            "preview_count": 3,
+        },
         "ui": {
             "font": "arial",
             "language": "en",
             "show_fps": True,
+            "show_ghost_piece": True,
+            "show_grid": True,
         },
         "database": {"engine": "sqlite", "sqlite": {"path": "./tetris.db"}},
     }
@@ -214,24 +256,55 @@ def fallback_menu(screen):
 
 def main():
     """Main function of the application with improved error handling and performance"""
-    # ส่วนการเตรียมพร้อมและการสร้าง objects ต่างๆ
     # Initialize logger
     global logger
-    logger = setup_logger("main")
+    logger = setup_logger()
+    logger.info("DENSO Tetris starting...")
 
     # Load configuration
     config = load_config()
 
-    # Initialize pygame and create screen
+    # Initialize pygame
     pygame.init()
+
+    # Create display window
     screen = pygame.display.set_mode(
         (config["screen"]["width"], config["screen"]["height"]),
         pygame.FULLSCREEN if config["screen"]["fullscreen"] else 0,
     )
     pygame.display.set_caption(TITLE)
 
-    # ปรับปรุง main loop
-    clock = pygame.time.Clock()  # Initialize clock
+    # Try to set window icon
+    try:
+        icon_path = "assets/images/icon.png"
+        if os.path.exists(icon_path):
+            icon = pygame.image.load(icon_path)
+            pygame.display.set_icon(icon)
+    except Exception as e:
+        logger.warning(f"Could not load window icon: {e}")
+
+    # Create required assets directory structure
+    ensure_assets_directory()
+
+    # Initialize database connection
+    try:
+        init_db()
+    except Exception as e:
+        logger.error(f"Could not initialize database: {e}")
+
+    # Create first scene
+    try:
+        current_scene = MainMenu(screen, config)
+        logger.info("Main menu initialized successfully")
+    except Exception as e:
+        logger.error(f"Could not initialize main menu: {e}\n{traceback.format_exc()}")
+        current_scene = fallback_menu(screen)
+        if current_scene is None:
+            pygame.quit()
+            sys.exit(1)
+
+    # Main game loop
+    clock = pygame.time.Clock()
     running = True
     last_time = time.time()
     accumulated_time = 0
@@ -239,42 +312,51 @@ def main():
 
     try:
         while running:
-            # วัดเวลาแบบควบคุมเอง แทนการพึ่งพา clock.tick() เพียงอย่างเดียว
+            # Custom time measurement
             current_time = time.time()
             delta_time = current_time - last_time
             last_time = current_time
 
-            # จำกัดการประมวลผลตามเฟรมเรต (ป้องกัน CPU throttling)
-            delta_time = min(delta_time, 0.25)  # ไม่เกิน 250 ms
+            # Limit processing frame rate (prevent CPU throttling)
+            delta_time = min(delta_time, 0.25)  # Max 250 ms
             accumulated_time += delta_time
 
-            # ประมวลผลอินพุท
+            # Process input
             events = pygame.event.get()
             for event in events:
                 if event.type == pygame.QUIT:
                     running = False
-                current_scene.handle_event(event)
+                elif (
+                    event.type == pygame.KEYDOWN
+                    and event.key == pygame.K_F4
+                    and (event.mod & pygame.KMOD_ALT)
+                ):
+                    running = False
 
-            # เตรียมตัวแปรสำหรับติดตามจำนวนการอัพเดทแบบ fixed
-            update_count = 0
+                if current_scene:
+                    current_scene.handle_event(event)
 
-            # Fixed update steps for consistent physics (จำกัดจำนวนการอัพเดท)
+            # Prepare variable for fixed update tracking
+            update_count = 0.0
+
+            # Fixed update steps for consistent physics (limit updates)
             while (
                 accumulated_time >= fixed_time_step and update_count < 5
-            ):  # จำกัดไม่ให้ update มากกว่า 5 ครั้งต่อเฟรม
+            ):  # Limit to 5 updates per frame
                 # Update state
-                next_scene = current_scene.update(fixed_time_step)
-                if next_scene:
-                    # Change scene if requested
-                    current_scene = next_scene
-                    # Reset events to prevent carry-over
-                    events.clear()
+                if current_scene:
+                    next_scene = current_scene.update(fixed_time_step)
+                    if next_scene:
+                        # Change scene if requested
+                        current_scene = next_scene
+                        # Reset events to prevent carry-over
+                        events.clear()
 
                 accumulated_time -= fixed_time_step
                 update_count += 1
 
-            # หากยังมี accumulated_time เหลืออยู่มากแต่เกิน update limit แล้ว
-            # ให้ยกเลิกส่วนที่เหลือทิ้งเพื่อป้องกันการเกิด spiral of death
+            # If too much accumulated time remains but update limit reached
+            # Drop the excess time to prevent death spiral
             if update_count >= 5 and accumulated_time > fixed_time_step:
                 logger.warning(
                     f"Dropping {accumulated_time:.4f}s of accumulated time to prevent lag spiral"
@@ -285,20 +367,21 @@ def main():
             screen.fill(UI_BG)
 
             # Render graphics
-            current_scene.render()
+            if current_scene:
+                current_scene.render()
 
             # Update display
             pygame.display.flip()
 
-            # จำกัดเฟรมเรตด้วย clock (แต่ไม่พึ่งพาเพียงอย่างเดียว)
+            # Limit frame rate
             try:
                 clock.tick(config["screen"].get("target_fps", 60))
             except Exception as e:
                 logger.error(f"Error in clock.tick(): {e}")
 
-            # ให้ CPU ได้พักบ้าง
+            # Give CPU a break if processing is too fast
             if delta_time < fixed_time_step * 0.5:
-                time.sleep(0.001)  # พัก 1 มิลลิวินาที หากการประมวลผลเร็วเกินไป
+                time.sleep(0.001)  # Sleep 1ms if processing too fast
 
     except KeyboardInterrupt:
         logger.info("Game terminated by user (KeyboardInterrupt)")

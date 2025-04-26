@@ -7,7 +7,18 @@ DENSO Tetris - Game Constants
 This file stores various constants used in the game
 """
 
-import pygame
+try:
+    import pygame
+except ImportError:
+    try:
+        import pygame_ce as pygame
+
+        print("ใช้ pygame-ce แทน pygame")
+    except ImportError:
+        print("กรุณาติดตั้ง pygame หรือ pygame-ce")
+        import sys
+
+        sys.exit(1)
 from pygame.locals import (
     K_LEFT,
     K_RIGHT,
@@ -167,6 +178,11 @@ SCORE_SOFT_DROP = 1  # Soft drop (points per block)
 SCORE_HARD_DROP = 2  # Hard drop (points per block)
 SCORE_T_SPIN = 400  # T-Spin bonus
 
+# Scoring multipliers
+BACK_TO_BACK_MULTIPLIER = 1.5  # Multiplier for back-to-back line clears
+COMBO_MULTIPLIER = 1.2  # Additional multiplier for combos
+COMBO_BONUS = 50  # Bonus points per combo chain
+
 # Keyboard control (DAS = Delayed Auto Shift)
 DAS_DELAY = 170  # milliseconds - time before repeat starts
 ARR_DELAY = 50  # milliseconds - time between repeats
@@ -263,3 +279,25 @@ STATE_LINE_CLEAR = 4  # clearing lines
 STATE_LEADERBOARD = 5  # showing leaderboard
 STATE_REGISTER = 6  # registration screen
 STATE_PROFILE = 7  # user profile screen
+STATE_VICTORY = 8  # victory screen
+
+# Achievement IDs
+ACHIEVEMENT_IDS = {
+    "first_game": "first_game",
+    "reach_level_10": "reach_level_10",
+    "reach_level_20": "reach_level_20",
+    "score_10k": "score_10k",
+    "score_50k": "score_50k",
+    "score_100k": "score_100k",
+    "clear_100_lines": "clear_100_lines",
+    "tetris": "tetris",
+    "t_spin": "t_spin",
+    "back_to_back": "back_to_back",
+}
+
+# Game mode constants
+MODE_ENDLESS = 0  # Play until game over
+MODE_VICTORY = 1  # Play until reaching level 20
+
+# Victory requirements
+VICTORY_LEVEL = 20  # Level needed to win the game

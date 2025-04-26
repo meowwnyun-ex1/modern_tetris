@@ -19,7 +19,11 @@ def setup_logger(console_level=logging.INFO):
     # Create logs directory if it doesn't exist
     logs_dir = "logs"
     if not os.path.exists(logs_dir):
-        os.makedirs(logs_dir)
+        os.makedirs(logs_dir, exist_ok=True)
+
+    # Remove existing handlers to avoid duplicates
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
 
     # Set filename with current date and time
     current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -28,10 +32,6 @@ def setup_logger(console_level=logging.INFO):
     # Configure root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
-
-    # Remove existing handlers to avoid duplicates
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
 
     # Add file handler
     file_handler = logging.FileHandler(log_file, encoding="utf-8")

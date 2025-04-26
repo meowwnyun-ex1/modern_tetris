@@ -4,18 +4,32 @@
 """
 DENSO Tetris - Game Class
 -------------------------
-Main class for managing the Tetris game with improved error handling
+Main class for managing the Tetris game with enhanced features
+including victory mode
 """
 
-import pygame
+try:
+    import pygame
+except ImportError:
+    try:
+        import pygame_ce as pygame
+
+        print("ใช้ pygame-ce แทน pygame")
+    except ImportError:
+        print("กรุณาติดตั้ง pygame หรือ pygame-ce")
+        import sys
+
+        sys.exit(1)
 import random
 import time
 import logging
 import math
 import traceback
 from pygame.locals import *
+import sys  # Fix "sys is not defined"
 
 from core.constants import (
+    BACK_TO_BACK_MULTIPLIER,
     BOARD_WIDTH,
     BOARD_HEIGHT,
     SCREEN_WIDTH,
@@ -24,30 +38,45 @@ from core.constants import (
     STATE_PLAYING,
     STATE_PAUSED,
     STATE_GAME_OVER,
+    STATE_VICTORY,
     STATE_LINE_CLEAR,
+    SCORE_SINGLE,
+    SCORE_DOUBLE,
+    SCORE_TRIPLE,
+    SCORE_TETRIS,
     SCORE_SOFT_DROP,
     SCORE_HARD_DROP,
     SCORE_T_SPIN,
+    COMBO_BONUS,
     DAS_DELAY,
     ARR_DELAY,
     PARTICLE_COUNT,
     GRID_SIZE,
     DENSO_RED,
+    VICTORY_LEVEL,
+    ACHIEVEMENT_IDS,
+    MODE_ENDLESS,
+    MODE_VICTORY,
 )
-from core.board import Board
-from core.tetromino import Tetromino
-from graphics.effects import ParticleSystem
-from graphics.renderer import Renderer
-from audio.sound_manager import SoundManager
-from ui.game_ui import GameUI
-from db.queries import save_game_score
-from utils.logger import get_logger
+
+try:
+    from core.board import Board
+    from core.tetromino import Tetromino
+    from graphics.effects import ParticleSystem
+    from graphics.renderer import Renderer
+    from audio.sound_manager import SoundManager
+    from ui.game_ui import GameUI
+    from db.queries import save_game_score, unlock_achievement
+    from utils.logger import get_logger
+except ImportError as e:
+    print(f"Error importing modules: {e}")
+    sys.exit(1)
 
 
 class Game:
     """Main class for Tetris game"""
 
-    def __init__(self, screen, config, username=None):
+    def __init__(self, screen, config, username=None, game_mode=MODE_ENDLESS):
         """
         Create a new game
 
@@ -55,12 +84,16 @@ class Game:
             screen (pygame.Surface): Main surface for display
             config (dict): Game config
             username (str, optional): Player name
+            game_mode (int, optional): Game mode (endless or victory)
         """
         self.screen = screen
         self.config = config
         self.username = username if username else "Guest"
+        self.game_mode = game_mode
         self.logger = get_logger()
-        self.logger.info(f"Initializing game for player: {self.username}")
+        self.logger.info(
+            f"Initializing game for player: {self.username}, Mode: {game_mode}"
+        )
 
         try:
             # Create game components with error handling
@@ -104,6 +137,7 @@ class Game:
             self.start_time = time.time()
             self.pause_time = 0
             self.game_over = False
+            self.victory = False
 
             # Setup fallback controls
             self.keys = {}
@@ -148,108 +182,6 @@ class Game:
                 "PAUSE": [pygame.K_p, pygame.K_ESCAPE],
             }
 
-    def reset_game(self):
-        """Reset game to initial state"""
-        try:
-            # Set game state
-            self.state = STATE_PLAYING
-            self.level = self.config["game"].get("start_level", 1)
-            self.score = 0
-            self.lines_cleared = 0
-            self.combo = 0
-            self.back_to_back = 0
-
-            # Start time
-            self.start_time = time.time()
-            self.pause_time = 0
-
-            # Reset board
-            self.board.reset_grid()
-
-            # Create tetromino bag
-            self.tetromino_bag = []
-            self.refill_bag()
-
-            # Create current and next tetrominos
-            self.current_tetromino = self.get_next_tetromino()
-            preview_count = self.config["tetromino"].get("preview_count", 3)
-            self.next_tetrominos = [
-                self.get_next_tetromino() for _ in range(preview_count)
-            ]
-            self.hold_tetromino = None
-            self.can_hold = True
-
-            # Setup timers
-            self.drop_timer = 0
-            self.lock_delay = 0.5  # 500 milliseconds
-            self.lock_timer = 0
-            self.das_timer = 0
-            self.arr_timer = 0
-            self.move_direction = 0
-
-            # Track button states
-            self.key_states = {
-                "MOVE_LEFT": False,
-                "MOVE_RIGHT": False,
-                "SOFT_DROP": False,
-                "HARD_DROP": False,
-                "ROTATE_CW": False,
-                "ROTATE_CCW": False,
-                "HOLD": False,
-                "PAUSE": False,
-            }
-
-            # Flags
-            self.lock_pending = False
-            self.game_over = False
-
-            # Start game music
-            try:
-                self.sound_manager.play_music("game")
-            except Exception as e:
-                self.logger.warning(f"Could not play game music: {e}")
-
-            self.logger.info(
-                f"New game started: Player {self.username}, Level {self.level}"
-            )
-        except Exception as e:
-            self.logger.error(f"Error resetting game: {e}")
-
-    def refill_bag(self):
-        """Refill tetromino bag with randomized pieces (7-bag system)"""
-        try:
-            if len(self.tetromino_bag) <= 7:
-                # Create new set of all pieces and shuffle
-                new_bag = list("IJLOSTZ")
-                random.shuffle(new_bag)
-                self.tetromino_bag.extend(new_bag)
-        except Exception as e:
-            self.logger.error(f"Error refilling bag: {e}")
-            # Add fallback pieces if bag is empty
-            if not self.tetromino_bag:
-                self.tetromino_bag = list("IJLOSTZ")
-
-    def get_next_tetromino(self):
-        """
-        Get next tetromino from bag
-
-        Returns:
-            Tetromino: Next tetromino
-        """
-        try:
-            # Refill bag if needed
-            self.refill_bag()
-
-            # Get and remove first piece from bag
-            shape_name = self.tetromino_bag.pop(0)
-
-            # Create new tetromino at center top of board
-            return Tetromino(shape_name, x=(BOARD_WIDTH // 2) - 1, y=0)
-        except Exception as e:
-            self.logger.error(f"Error getting next tetromino: {e}")
-            # Return fallback I tetromino
-            return Tetromino("I", x=(BOARD_WIDTH // 2) - 1, y=0)
-
     def handle_event(self, event):
         """
         Handle input events
@@ -261,10 +193,10 @@ class Game:
             bool: True if event was handled, False otherwise
         """
         try:
-            if self.state == STATE_GAME_OVER:
-                # Handle button press in game over state
+            if self.state in [STATE_GAME_OVER, STATE_VICTORY]:
+                # Handle button press in game over/victory state
                 if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_RETURN:
+                    if event.key in [pygame.K_RETURN, pygame.K_ESCAPE, pygame.K_SPACE]:
                         # Return to main menu
                         return True
                 return False
@@ -358,27 +290,90 @@ class Game:
 
                 # Update statistics
                 self.lines_cleared += lines_cleared
-                self.score += board_update.get("score", 0) * self.level
+                base_score = board_update.get("score", 0)
 
-                # Check combo
+                # Calculate score multipliers
+                level_multiplier = self.level
+
+                # Check if this is a T-spin or Tetris
+                is_tetris = board_update.get("tetris", False)
+                is_t_spin = board_update.get("t_spin", False)
+
+                # Apply back-to-back bonus if appropriate
+                if is_tetris or is_t_spin:
+                    if self.back_to_back > 0:
+                        # Back-to-back bonus
+                        base_score = int(base_score * BACK_TO_BACK_MULTIPLIER)
+                    self.back_to_back += 1
+
+                    # Track achievements
+                    if is_tetris:
+                        self.achievement_data["tetris_count"] += 1
+                        if self.achievement_data["tetris_count"] == 1:
+                            self._unlock_achievement(
+                                ACHIEVEMENT_IDS["tetris"],
+                                "First Tetris",
+                                "Clear 4 lines at once",
+                            )
+
+                    if is_t_spin:
+                        self.achievement_data["t_spin_count"] += 1
+                        if self.achievement_data["t_spin_count"] == 1:
+                            self._unlock_achievement(
+                                ACHIEVEMENT_IDS["t_spin"],
+                                "T-Spin Master",
+                                "Perform your first T-Spin",
+                            )
+
+                    if self.back_to_back >= 2:
+                        self.achievement_data["back_to_back_count"] += 1
+                        if self.achievement_data["back_to_back_count"] == 1:
+                            self._unlock_achievement(
+                                ACHIEVEMENT_IDS["back_to_back"],
+                                "Back-to-Back",
+                                "Perform consecutive Tetris or T-Spin clears",
+                            )
+                else:
+                    self.back_to_back = 0
+
+                # Apply combo bonus
                 if lines_cleared > 0:
                     self.combo += 1
                     # Combo bonus (50 * combo * level)
                     if self.combo > 1:
-                        self.score += 50 * self.combo * self.level
+                        combo_bonus = COMBO_BONUS * self.combo * level_multiplier
+                        base_score += combo_bonus
                 else:
                     self.combo = 0
 
-                # Check back-to-back (tetris or t-spin in a row)
-                if board_update.get("tetris", False) or board_update.get(
-                    "t_spin", False
-                ):
-                    self.back_to_back += 1
-                    if self.back_to_back > 1:
-                        # Back-to-back bonus
-                        self.score += int(board_update.get("score", 0) * 0.5)
-                else:
-                    self.back_to_back = 0
+                # Add final score
+                self.score += base_score * level_multiplier
+
+                # Update max score achievement tracking
+                if self.score > self.achievement_data["max_score"]:
+                    self.achievement_data["max_score"] = self.score
+
+                    # Check score achievements
+                    if self.score >= 10000 and not self._has_achievement("score_10k"):
+                        self._unlock_achievement(
+                            ACHIEVEMENT_IDS["score_10k"],
+                            "Score 10,000",
+                            "Reach a score of 10,000 points",
+                        )
+
+                    if self.score >= 50000 and not self._has_achievement("score_50k"):
+                        self._unlock_achievement(
+                            ACHIEVEMENT_IDS["score_50k"],
+                            "Score 50,000",
+                            "Reach a score of 50,000 points",
+                        )
+
+                    if self.score >= 100000 and not self._has_achievement("score_100k"):
+                        self._unlock_achievement(
+                            ACHIEVEMENT_IDS["score_100k"],
+                            "Score 100,000",
+                            "Reach a score of 100,000 points",
+                        )
 
                 # Check for level up
                 level_up_lines = self.config["game"].get("level_up_lines", 10)
@@ -387,6 +382,30 @@ class Game:
                     and self.level < self.config["game"].get("max_level", 20)
                 ):
                     self.level += 1
+
+                    # Update max level for achievement tracking
+                    if self.level > self.achievement_data["max_level"]:
+                        self.achievement_data["max_level"] = self.level
+
+                        # Check level achievements
+                        if self.level >= 10 and not self._has_achievement(
+                            "reach_level_10"
+                        ):
+                            self._unlock_achievement(
+                                ACHIEVEMENT_IDS["reach_level_10"],
+                                "Level 10",
+                                "Reach level 10",
+                            )
+
+                        if self.level >= 20 and not self._has_achievement(
+                            "reach_level_20"
+                        ):
+                            self._unlock_achievement(
+                                ACHIEVEMENT_IDS["reach_level_20"],
+                                "Level 20",
+                                "Reach level 20",
+                            )
+
                     try:
                         self.sound_manager.play_sound("level_up")
                     except:
@@ -405,6 +424,21 @@ class Game:
                             self.sound_manager.play_music("high_level")
                         except:
                             pass
+
+                    # Check for victory condition
+                    if self.game_mode == MODE_VICTORY and self.level >= VICTORY_LEVEL:
+                        self._handle_victory()
+                        return None
+
+                # Check lines cleared achievement
+                if self.lines_cleared >= 100 and not self._has_achievement(
+                    "clear_100_lines"
+                ):
+                    self._unlock_achievement(
+                        ACHIEVEMENT_IDS["clear_100_lines"],
+                        "Line Clearer",
+                        "Clear 100 lines total",
+                    )
 
                 # Play sound based on lines cleared
                 try:
@@ -428,7 +462,7 @@ class Game:
                 except Exception as e:
                     self.logger.warning(f"Particle system error: {e}")
 
-            # Update game
+            # Update game state
             if self.state == STATE_PLAYING:
                 self._update_game(dt)
             elif self.state == STATE_LINE_CLEAR:
@@ -438,6 +472,10 @@ class Game:
                 # Save score
                 if not self.game_over:
                     self._handle_game_over()
+            elif self.state == STATE_VICTORY:
+                # Handle victory state
+                if not self.victory:
+                    self._handle_victory()
 
             return None
         except Exception as e:
@@ -708,52 +746,55 @@ class Game:
                 self.lock_timer = 0
                 self.can_hold = True
 
-    def _handle_game_over(self):
-        """Handle game over state"""
+    def reset_game(self):
+        """Reset game state"""
+        self.state = STATE_PLAYING
+        self.level = 1
+        self.score = 0
+        self.lines_cleared = 0
+        self.combo = 0
+        self.back_to_back = 0
+        self.tetromino_bag = []
+        self.next_tetrominos = []
+        self.hold_tetromino = None
+        self.can_hold = True
+        self.start_time = time.time()
+        self.pause_time = 0
+        self.game_over = False
+        self.victory = False
+
+        # Movement state tracking
+        self.das_timer = 0
+        self.arr_timer = 0
+        self.move_direction = 0
+        self.drop_timer = 0
+        self.lock_timer = 0
+        self.lock_delay = 0.5
+        self.lock_pending = False
+
+        # Achievement tracking
+        self.achievement_data = {
+            "max_score": 0,
+            "max_level": 1,
+            "tetris_count": 0,
+            "t_spin_count": 0,
+            "back_to_back_count": 0,
+            "unlocked": set(),
+        }
+
+        # Initialize board
+        self.board.reset_grid()
+
+        # Create initial pieces
+        self.current_tetromino = self.get_next_tetromino()
+        for _ in range(5):
+            self.next_tetrominos.append(self.get_next_tetromino())
+
+        # Start game music
         try:
-            self.game_over = True
-
-            # Stop game music
-            try:
-                self.sound_manager.stop_music()
-            except:
-                pass
-
-            # Play game over sound
-            try:
-                self.sound_manager.play_sound("game_over")
-            except:
-                pass
-
-            # Play game over music
-            try:
-                self.sound_manager.play_music("game_over")
-            except:
-                pass
-
-            # Create game over particles
-            if self.config["graphics"].get("particles", True):
-                self.create_particles("game_over")
-
-            # Calculate play time
-            elapsed_time = time.time() - self.start_time - self.pause_time
-
-            # Save score to database
-            try:
-                save_game_score(
-                    username=self.username,
-                    score=self.score,
-                    level=self.level,
-                    lines=self.lines_cleared,
-                    time_played=elapsed_time,
-                )
-                self.logger.info(
-                    f"Score saved: {self.username}, {self.score}, Level {self.level}"
-                )
-            except Exception as e:
-                self.logger.error(f"Could not save score: {e}")
-        except Exception as e:
-            self.logger.error(f"Error handling game over: {e}")
+            self.sound_manager.play_music("game")
+        except:
+            self.logger.warning("Could not play game music")
 
     def create_particles(self, effect_type, multiplier=1):
         """
@@ -816,8 +857,77 @@ class Game:
                     self.particle_system.create_particle(
                         x, y, color, life_span=3.0, gravity=200
                     )
+
+            elif effect_type == "victory":
+                # Colorful firework particles
+                for _ in range(count):
+                    # Create multiple explosion centers
+                    center_x = random.randint(0, SCREEN_WIDTH)
+                    center_y = random.randint(0, SCREEN_HEIGHT)
+
+                    # Randomize color for this firework
+                    r = random.randint(100, 255)
+                    g = random.randint(100, 255)
+                    b = random.randint(100, 255)
+                    color = (r, g, b)
+
+                    # Create explosion particles
+                    for i in range(20):  # 20 particles per firework
+                        angle = random.uniform(0, 6.28)
+                        speed = random.uniform(50, 200)
+                        distance = random.uniform(0, 5)  # Initial distance
+
+                        # Calculate position
+                        x = center_x + distance * math.cos(angle)
+                        y = center_y + distance * math.sin(angle)
+
+                        # Calculate velocity
+                        vx = math.cos(angle) * speed
+                        vy = math.sin(angle) * speed
+
+                        # Create particle with velocity
+                        self.particle_system.create_particle(
+                            x,
+                            y,
+                            color,
+                            velocity=(vx, vy),
+                            life_span=random.uniform(1.0, 3.0),
+                            size=random.uniform(2, 5),
+                            fade=True,
+                        )
+
         except Exception as e:
             self.logger.error(f"Error creating particles: {e}")
+
+    def _unlock_achievement(self, achievement_id, name, description):
+        """
+        Unlock an achievement with error handling
+
+        Args:
+            achievement_id (str): Achievement identifier
+            name (str): Achievement name
+            description (str): Achievement description
+        """
+        try:
+            unlock_achievement(self.username, achievement_id, name, description)
+            self.logger.info(f"Achievement unlocked: {name} for {self.username}")
+        except Exception as e:
+            self.logger.error(f"Error unlocking achievement {achievement_id}: {e}")
+
+    def _has_achievement(self, achievement_id):
+        """
+        Check if player has the specified achievement
+
+        Args:
+            achievement_id (str): Achievement to check
+
+        Returns:
+            bool: True if player has achievement
+        """
+        # This is a stub that could be implemented with the database
+        # For now, we'll just use our achievement_data to prevent duplicates
+        # in the current session
+        return achievement_id in self.achievement_data.get("unlocked", [])
 
     def render(self):
         """Render the entire game"""
@@ -859,6 +969,7 @@ class Game:
                     "state": self.state,
                     "username": self.username,
                     "time": time.time() - self.start_time - self.pause_time,
+                    "game_mode": self.game_mode,
                 }
                 self.ui.render(ui_data)
             except Exception as e:
@@ -866,7 +977,7 @@ class Game:
                 # Fallback simple UI
                 self._render_fallback_ui()
 
-            # Overlay effects (pause or game over)
+            # Render specific game state overlays
             if self.state == STATE_PAUSED:
                 try:
                     self.renderer.render_pause_overlay()
@@ -895,6 +1006,29 @@ class Game:
                         f"Score: {self.score}",
                         (255, 255, 255),
                         (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 40),
+                    )
+            elif self.state == STATE_VICTORY:
+                try:
+                    self.renderer.render_victory(
+                        self.score, self.level, self.lines_cleared
+                    )
+                except Exception as e:
+                    self.logger.warning(f"Error rendering victory screen: {e}")
+                    # Fallback victory message
+                    self._draw_simple_text(
+                        "VICTORY!",
+                        (255, 215, 0),  # Gold
+                        (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40),
+                    )
+                    self._draw_simple_text(
+                        f"Score: {self.score}",
+                        (255, 255, 255),
+                        (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2),
+                    )
+                    self._draw_simple_text(
+                        "Press ENTER to continue",
+                        (255, 255, 255),
+                        (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 80),
                     )
 
             # Apply bloom effect if enabled
@@ -945,6 +1079,13 @@ class Game:
             # Draw player name
             name_text = font.render(f"Player: {self.username}", True, (255, 255, 255))
             self.screen.blit(name_text, (20, 110))
+
+            # Draw game mode
+            mode_text = (
+                "Mode: Victory" if self.game_mode == MODE_VICTORY else "Mode: Endless"
+            )
+            mode_render = font.render(mode_text, True, (255, 255, 255))
+            self.screen.blit(mode_render, (20, 140))
 
         except Exception as e:
             self.logger.error(f"Error rendering fallback UI: {e}")
