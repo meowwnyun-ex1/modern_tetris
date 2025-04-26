@@ -8,17 +8,14 @@ Functions for setting up and using the logging system
 """
 
 import os
-import logging
 import datetime
+import logging
+import logging.handlers
 
 
 def setup_logger(console_level=logging.INFO):
-    """
-    Setup logging system with detailed configuration
+    """Setup logging system with detailed configuration"""
 
-    Args:
-        console_level: Logging level for console output
-    """
     # Create logs directory if it doesn't exist
     logs_dir = "logs"
     if not os.path.exists(logs_dir):
@@ -28,65 +25,41 @@ def setup_logger(console_level=logging.INFO):
     current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = os.path.join(logs_dir, f"tetris_{current_time}.log")
 
-    # Configure log format
-    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-
     # Configure root logger
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)  # Capture all levels
+    root_logger.setLevel(logging.DEBUG)
 
     # Remove existing handlers to avoid duplicates
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    try:
-        # Add file handler
-        file_handler = logging.FileHandler(log_file, encoding="utf-8")
-        file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(logging.Formatter(log_format))
-        root_logger.addHandler(file_handler)
+    # Add file handler
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler.setLevel(logging.DEBUG)
+    file_format = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    file_handler.setFormatter(file_format)
+    root_logger.addHandler(file_handler)
 
-        # Add console handler
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(console_level)
-        console_handler.setFormatter(logging.Formatter(log_format))
-        root_logger.addHandler(console_handler)
-    except Exception as e:
-        # If log setup fails, create a basic console logger
-        root_logger = logging.getLogger()
-        root_logger.setLevel(logging.DEBUG)
+    # Add console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(console_level)
+    console_format = logging.Formatter("%(levelname)s: %(message)s")
+    console_handler.setFormatter(console_format)
+    root_logger.addHandler(console_handler)
 
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        console_handler.setFormatter(logging.Formatter(log_format))
-        root_logger.addHandler(console_handler)
+    # Add rotating file handler for size management
+    rotating_handler = logging.handlers.RotatingFileHandler(
+        log_file, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8"  # 5MB
+    )
+    rotating_handler.setLevel(logging.DEBUG)
+    rotating_handler.setFormatter(file_format)
+    root_logger.addHandler(rotating_handler)
 
-        root_logger.error(f"Error setting up logger: {e}")
-
-    # Create game logger
-    game_logger = logging.getLogger("tetris")
-    game_logger.info(f"Started logging system at {current_time}")
+    return root_logger
 
 
 def get_logger(name="tetris"):
-    """
-    Get a logger object
-
-    Args:
-        name (str, optional): Logger name
-
-    Returns:
-        logging.Logger: Logger object
-    """
-    logger = logging.getLogger(name)
-
-    # Ensure there's at least a console handler if no handlers
-    if not logger.handlers and not logging.getLogger().handlers:
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(
-            logging.Formatter("%(name)s - %(levelname)s - %(message)s")
-        )
-        logger.addHandler(console_handler)
-        logger.setLevel(logging.INFO)
-
-    return logger
+    """Get logger for specific module"""
+    return logging.getLogger(name)

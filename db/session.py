@@ -139,56 +139,45 @@ def check_database_connection():
 
 
 def get_session():
-    """
-    Get a database session with initialization check
+    """Get a database session with improved error handling"""
+    global engine, Session
 
-    Returns:
-        sqlalchemy.orm.Session: Database session
-    """
     if Session is None:
         init_db()
 
+    if not engine or not Session:
+        logger.error("Database not initialized properly")
+        return None
+
     try:
-        return Session()
+        session = Session()
+        # Verify connection is working
+        session.execute("SELECT 1")
+        return session
     except Exception as e:
         logger.error(f"Error creating database session: {e}")
-        # Reinitialize database connection
+        # Try to reinitialize
         init_db()
-        return Session()
+        try:
+            return Session()
+        except Exception as e2:
+            logger.critical(f"Could not recreate session after reinitialization: {e2}")
+            return None
 
 
 def close_session(session):
-    """
-    Close database session safely
-
-    Args:
-        session: Database session to close
-    """
+    """Close database session safely"""
     if session:
         try:
-            session.close()
+            session.commit()
         except Exception as e:
-            logger.error(f"Error closing database session: {e}")
-
-
-def check_database_connection():
-    """
-    Check if database connection is working
-
-    Returns:
-        bool: True if connection is working
-    """
-    session = None
-    try:
-        session = get_session()
-        # Try a simple query
-        session.execute("SELECT 1")
-        logger.info("Database connection successful")
-        return True
-
-    except Exception as e:
-        logger.error(f"Database connection error: {e}")
-        return False
-    finally:
-        if session:
-            close_session(session)
+            logger.error(f"Error committing session: {e}")
+            try:
+                session.rollback()
+            except:
+                pass
+        finally:
+            try:
+                session.close()
+            except Exception as e:
+                logger.error(f"Error closing session: {e}")
