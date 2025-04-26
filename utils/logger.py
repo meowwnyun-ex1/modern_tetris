@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """
-Modern Tetris - Logger
+DENSO Tetris - Logger
 --------------------
-ฟังก์ชันสำหรับการตั้งค่าและใช้งานระบบบันทึก log
+Functions for setting up and using the logging system
 """
 
 import os
@@ -12,46 +12,81 @@ import logging
 import datetime
 
 
-def setup_logger():
-    """ตั้งค่าระบบบันทึก log"""
-    # สร้างโฟลเดอร์ logs ถ้ายังไม่มี
+def setup_logger(console_level=logging.INFO):
+    """
+    Setup logging system with detailed configuration
+
+    Args:
+        console_level: Logging level for console output
+    """
+    # Create logs directory if it doesn't exist
     logs_dir = "logs"
     if not os.path.exists(logs_dir):
         os.makedirs(logs_dir)
 
-    # กำหนดชื่อไฟล์ log ด้วยวันที่และเวลาปัจจุบัน
+    # Set filename with current date and time
     current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = os.path.join(logs_dir, f"tetris_{current_time}.log")
 
-    # กำหนดรูปแบบข้อความ log
+    # Configure log format
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-    # ตั้งค่า root logger
-    logging.basicConfig(
-        level=logging.INFO,
-        format=log_format,
-        handlers=[
-            logging.FileHandler(log_file, encoding="utf-8"),
-            logging.StreamHandler(),  # แสดงใน console ด้วย
-        ],
-    )
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)  # Capture all levels
 
-    # สร้าง logger สำหรับเกม
+    # Remove existing handlers to avoid duplicates
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    try:
+        # Add file handler
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(logging.Formatter(log_format))
+        root_logger.addHandler(file_handler)
+
+        # Add console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(console_level)
+        console_handler.setFormatter(logging.Formatter(log_format))
+        root_logger.addHandler(console_handler)
+    except Exception as e:
+        # If log setup fails, create a basic console logger
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.DEBUG)
+
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(logging.Formatter(log_format))
+        root_logger.addHandler(console_handler)
+
+        root_logger.error(f"Error setting up logger: {e}")
+
+    # Create game logger
     game_logger = logging.getLogger("tetris")
-    game_logger.setLevel(logging.INFO)
-
-    # แจ้งว่าเริ่มต้นระบบ log แล้ว
-    game_logger.info(f"เริ่มต้นระบบ logging ที่ {current_time}")
+    game_logger.info(f"Started logging system at {current_time}")
 
 
 def get_logger(name="tetris"):
     """
-    รับอ็อบเจกต์ logger
+    Get a logger object
 
     Args:
-        name (str, optional): ชื่อของ logger
+        name (str, optional): Logger name
 
     Returns:
-        logging.Logger: อ็อบเจกต์ logger
+        logging.Logger: Logger object
     """
-    return logging.getLogger(name)
+    logger = logging.getLogger(name)
+
+    # Ensure there's at least a console handler if no handlers
+    if not logger.handlers and not logging.getLogger().handlers:
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(
+            logging.Formatter("%(name)s - %(levelname)s - %(message)s")
+        )
+        logger.addHandler(console_handler)
+        logger.setLevel(logging.INFO)
+
+    return logger

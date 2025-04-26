@@ -2,15 +2,17 @@
 # -*- coding: utf-8 -*-
 
 """
-Modern Tetris - Database Queries
+DENSO Tetris - Database Queries
 ------------------------------
-คำสั่ง SQL สำหรับการดึงข้อมูลและบันทึกข้อมูล
+SQL commands for retrieving and saving data with improved error handling
 """
 
 import logging
 import datetime
 import bcrypt
+import sqlite3
 from sqlalchemy import desc
+from sqlalchemy.exc import SQLAlchemyError
 
 from db.session import get_session, close_session
 from db.models import User, GameScore, GameSettings, Achievement
@@ -20,39 +22,55 @@ logger = logging.getLogger("tetris.db")
 
 def register_user(username, password):
     """
-    ลงทะเบียนผู้ใช้ใหม่
+    Register a new user with better validation
 
     Args:
-        username (str): ชื่อผู้ใช้
-        password (str): รหัสผ่าน
+        username (str): Username
+        password (str): Password
 
     Returns:
-        bool: True ถ้าลงทะเบียนสำเร็จ
+        bool: True if registration was successful
     """
+    if not username or not password:
+        logger.warning("Registration failed: empty username or password")
+        return False
+
+    if len(password) < 6:
+        logger.warning("Registration failed: password too short")
+        return False
+
     session = get_session()
     try:
-        # ตรวจสอบว่าชื่อผู้ใช้มีอยู่แล้วหรือไม่
+        # Check if username already exists
         existing_user = session.query(User).filter_by(username=username).first()
         if existing_user:
-            logger.warning(f"ชื่อผู้ใช้ {username} มีอยู่แล้ว")
+            logger.warning(f"Username {username} already exists")
             return False
 
-        # เข้ารหัสรหัสผ่าน
-        password_hash = bcrypt.hashpw(
-            password.encode("utf-8"), bcrypt.gensalt()
-        ).decode("utf-8")
+        # Hash password
+        try:
+            password_hash = bcrypt.hashpw(
+                password.encode("utf-8"), bcrypt.gensalt()
+            ).decode("utf-8")
+        except Exception as e:
+            logger.error(f"Password hashing error: {e}")
+            return False
 
-        # สร้างผู้ใช้ใหม่
+        # Create new user
         new_user = User(username=username, password_hash=password_hash)
         session.add(new_user)
         session.commit()
 
-        logger.info(f"ลงทะเบียนผู้ใช้ {username} สำเร็จ")
+        logger.info(f"User {username} registered successfully")
         return True
 
+    except SQLAlchemyError as e:
+        session.rollback()
+        logger.error(f"Database error during user registration: {e}")
+        return False
     except Exception as e:
         session.rollback()
-        logger.error(f"เกิดข้อผิดพลาดในการลงทะเบียนผู้ใช้: {e}")
+        logger.error(f"Error during user registration: {e}")
         return False
     finally:
         close_session(session)
@@ -60,30 +78,50 @@ def register_user(username, password):
 
 def authenticate_user(username, password):
     """
-    ตรวจสอบสิทธิ์ผู้ใช้
+    Authenticate user with better error handling
 
     Args:
-        username (str): ชื่อผู้ใช้
-        password (str): รหัสผ่าน
+        username (str): Username
+        password (str): Password
 
     Returns:
-        bool: True ถ้าตรวจสอบสิทธิ์สำเร็จ
+        bool: True if authentication was successful
     """
+    if not username or not password:
+        return False
+
     session = get_session()
     try:
-        # ค้นหาผู้ใช้
+        # Find user
         user = session.query(User).filter_by(username=username).first()
         if not user:
-            logger.warning(f"ไม่พบผู้ใช้ {username}")
+            logger.warning(f"Authentication failed: user {username} not found")
             return False
 
-        # ตรวจสอบรหัสผ่าน
-        return bcrypt.checkpw(
-            password.encode("utf-8"), user.password_hash.encode("utf-8")
-        )
+        # Check password
+        try:
+            is_valid = bcrypt.checkpw(
+                password.encode("utf-8"), user.password_hash.encode("utf-8")
+            )
 
+            if is_valid:
+                logger.info(f"User {username} authenticated successfully")
+            else:
+                logger.warning(
+                    f"Authentication failed: incorrect password for {username}"
+                )
+
+            return is_valid
+
+        except Exception as e:
+            logger.error(f"Password verification error: {e}")
+            return False
+
+    except SQLAlchemyError as e:
+        logger.error(f"Database error during authentication: {e}")
+        return False
     except Exception as e:
-        logger.error(f"เกิดข้อผิดพลาดในการตรวจสอบสิทธิ์ผู้ใช้: {e}")
+        logger.error(f"Error during authentication: {e}")
         return False
     finally:
         close_session(session)
@@ -91,21 +129,35 @@ def authenticate_user(username, password):
 
 def save_game_score(username, score, level, lines, time_played):
     """
-    บันทึกคะแนนเกม
+    Save game score with validation
 
     Args:
-        username (str): ชื่อผู้ใช้
-        score (int): คะแนน
-        level (int): ระดับ
-        lines (int): จำนวนแถวที่ล้าง
-        time_played (float): เวลาที่เล่น (วินาที)
+        username (str): Username
+        score (int): Score
+        level (int): Level
+        lines (int): Number of lines cleared
+        time_played (float): Time played (seconds)
 
     Returns:
-        bool: True ถ้าบันทึกสำเร็จ
+        bool: True if score was saved successfully
     """
+    if not username:
+        logger.warning("Cannot save score: no username provided")
+        return False
+
+    # Validate inputs
+    try:
+        score = int(score)
+        level = int(level)
+        lines = int(lines)
+        time_played = float(time_played)
+    except (ValueError, TypeError) as e:
+        logger.error(f"Invalid score data: {e}")
+        return False
+
     session = get_session()
     try:
-        # สร้างรายการคะแนนใหม่
+        # Create new score entry
         new_score = GameScore(
             username=username,
             score=score,
@@ -117,12 +169,16 @@ def save_game_score(username, score, level, lines, time_played):
         session.add(new_score)
         session.commit()
 
-        logger.info(f"บันทึกคะแนน {score} สำหรับผู้ใช้ {username} สำเร็จ")
+        logger.info(f"Score {score} for user {username} saved successfully")
         return True
 
+    except SQLAlchemyError as e:
+        session.rollback()
+        logger.error(f"Database error saving score: {e}")
+        return False
     except Exception as e:
         session.rollback()
-        logger.error(f"เกิดข้อผิดพลาดในการบันทึกคะแนน: {e}")
+        logger.error(f"Error saving score: {e}")
         return False
     finally:
         close_session(session)
@@ -130,24 +186,27 @@ def save_game_score(username, score, level, lines, time_played):
 
 def get_top_scores(limit=10):
     """
-    ดึงคะแนนสูงสุด
+    Get top scores with error handling
 
     Args:
-        limit (int): จำนวนรายการที่ต้องการ
+        limit (int): Number of scores to retrieve
 
     Returns:
-        list: รายการคะแนนสูงสุด
+        list: List of top scores
     """
     session = get_session()
     try:
-        # ดึงคะแนนสูงสุด
+        # Get top scores
         scores = (
             session.query(GameScore).order_by(desc(GameScore.score)).limit(limit).all()
         )
         return scores
 
+    except SQLAlchemyError as e:
+        logger.error(f"Database error retrieving top scores: {e}")
+        return []
     except Exception as e:
-        logger.error(f"เกิดข้อผิดพลาดในการดึงคะแนนสูงสุด: {e}")
+        logger.error(f"Error retrieving top scores: {e}")
         return []
     finally:
         close_session(session)
@@ -155,17 +214,20 @@ def get_top_scores(limit=10):
 
 def get_user_best_score(username):
     """
-    ดึงคะแนนสูงสุดของผู้ใช้
+    Get user's best score with error handling
 
     Args:
-        username (str): ชื่อผู้ใช้
+        username (str): Username
 
     Returns:
-        GameScore: รายการคะแนนสูงสุด
+        GameScore: User's best score entry
     """
+    if not username:
+        return None
+
     session = get_session()
     try:
-        # ดึงคะแนนสูงสุดของผู้ใช้
+        # Get user's best score
         score = (
             session.query(GameScore)
             .filter_by(username=username)
@@ -174,8 +236,11 @@ def get_user_best_score(username):
         )
         return score
 
+    except SQLAlchemyError as e:
+        logger.error(f"Database error retrieving user's best score: {e}")
+        return None
     except Exception as e:
-        logger.error(f"เกิดข้อผิดพลาดในการดึงคะแนนสูงสุดของผู้ใช้: {e}")
+        logger.error(f"Error retrieving user's best score: {e}")
         return None
     finally:
         close_session(session)
@@ -183,22 +248,25 @@ def get_user_best_score(username):
 
 def save_user_settings(username, settings):
     """
-    บันทึกการตั้งค่าของผู้ใช้
+    Save user settings with validation
 
     Args:
-        username (str): ชื่อผู้ใช้
-        settings (dict): การตั้งค่า
+        username (str): Username
+        settings (dict): Settings
 
     Returns:
-        bool: True ถ้าบันทึกสำเร็จ
+        bool: True if settings were saved successfully
     """
+    if not username or not isinstance(settings, dict):
+        return False
+
     session = get_session()
     try:
-        # ตรวจสอบว่ามีการตั้งค่าอยู่แล้วหรือไม่
+        # Check if settings already exist
         user_settings = session.query(GameSettings).filter_by(username=username).first()
 
         if user_settings:
-            # อัปเดตการตั้งค่าที่มีอยู่
+            # Update existing settings
             user_settings.theme = settings.get("theme", user_settings.theme)
             user_settings.music_volume = settings.get(
                 "music_volume", user_settings.music_volume
@@ -212,10 +280,10 @@ def save_user_settings(username, settings):
             user_settings.controls = settings.get("controls", user_settings.controls)
             user_settings.timestamp = datetime.datetime.now()
         else:
-            # สร้างการตั้งค่าใหม่
+            # Create new settings
             user_settings = GameSettings(
                 username=username,
-                theme=settings.get("theme", "neon"),
+                theme=settings.get("theme", "denso"),
                 music_volume=settings.get("music_volume", 0.7),
                 sfx_volume=settings.get("sfx_volume", 0.8),
                 show_ghost=settings.get("show_ghost", 1),
@@ -224,12 +292,16 @@ def save_user_settings(username, settings):
             session.add(user_settings)
 
         session.commit()
-        logger.info(f"บันทึกการตั้งค่าสำหรับผู้ใช้ {username} สำเร็จ")
+        logger.info(f"Settings for user {username} saved successfully")
         return True
 
+    except SQLAlchemyError as e:
+        session.rollback()
+        logger.error(f"Database error saving settings: {e}")
+        return False
     except Exception as e:
         session.rollback()
-        logger.error(f"เกิดข้อผิดพลาดในการบันทึกการตั้งค่า: {e}")
+        logger.error(f"Error saving settings: {e}")
         return False
     finally:
         close_session(session)
@@ -237,22 +309,28 @@ def save_user_settings(username, settings):
 
 def get_user_settings(username):
     """
-    ดึงการตั้งค่าของผู้ใช้
+    Get user settings with error handling
 
     Args:
-        username (str): ชื่อผู้ใช้
+        username (str): Username
 
     Returns:
-        GameSettings: การตั้งค่าของผู้ใช้
+        GameSettings: User settings
     """
+    if not username:
+        return None
+
     session = get_session()
     try:
-        # ดึงการตั้งค่าของผู้ใช้
+        # Get user settings
         settings = session.query(GameSettings).filter_by(username=username).first()
         return settings
 
+    except SQLAlchemyError as e:
+        logger.error(f"Database error retrieving user settings: {e}")
+        return None
     except Exception as e:
-        logger.error(f"เกิดข้อผิดพลาดในการดึงการตั้งค่าของผู้ใช้: {e}")
+        logger.error(f"Error retrieving user settings: {e}")
         return None
     finally:
         close_session(session)
@@ -260,20 +338,23 @@ def get_user_settings(username):
 
 def unlock_achievement(username, achievement_id, achievement_name, description):
     """
-    ปลดล็อคความสำเร็จ
+    Unlock achievement with validation
 
     Args:
-        username (str): ชื่อผู้ใช้
-        achievement_id (str): รหัสความสำเร็จ
-        achievement_name (str): ชื่อความสำเร็จ
-        description (str): คำอธิบายความสำเร็จ
+        username (str): Username
+        achievement_id (str): Achievement ID
+        achievement_name (str): Achievement name
+        description (str): Achievement description
 
     Returns:
-        bool: True ถ้าปลดล็อคสำเร็จ
+        bool: True if achievement was unlocked successfully
     """
+    if not username or not achievement_id or not achievement_name:
+        return False
+
     session = get_session()
     try:
-        # ตรวจสอบว่าปลดล็อคไปแล้วหรือไม่
+        # Check if achievement already unlocked
         existing = (
             session.query(Achievement)
             .filter_by(username=username, achievement_id=achievement_id)
@@ -281,10 +362,10 @@ def unlock_achievement(username, achievement_id, achievement_name, description):
         )
 
         if existing:
-            logger.info(f"ความสำเร็จ {achievement_id} ถูกปลดล็อคไปแล้ว")
+            logger.info(f"Achievement {achievement_id} already unlocked")
             return False
 
-        # สร้างความสำเร็จใหม่
+        # Create new achievement
         new_achievement = Achievement(
             username=username,
             achievement_id=achievement_id,
@@ -295,12 +376,16 @@ def unlock_achievement(username, achievement_id, achievement_name, description):
         session.add(new_achievement)
         session.commit()
 
-        logger.info(f"ปลดล็อคความสำเร็จ {achievement_name} สำหรับผู้ใช้ {username} สำเร็จ")
+        logger.info(f"Achievement {achievement_name} unlocked for user {username}")
         return True
 
+    except SQLAlchemyError as e:
+        session.rollback()
+        logger.error(f"Database error unlocking achievement: {e}")
+        return False
     except Exception as e:
         session.rollback()
-        logger.error(f"เกิดข้อผิดพลาดในการปลดล็อคความสำเร็จ: {e}")
+        logger.error(f"Error unlocking achievement: {e}")
         return False
     finally:
         close_session(session)
@@ -308,17 +393,20 @@ def unlock_achievement(username, achievement_id, achievement_name, description):
 
 def get_user_achievements(username):
     """
-    ดึงความสำเร็จของผู้ใช้
+    Get user achievements with error handling
 
     Args:
-        username (str): ชื่อผู้ใช้
+        username (str): Username
 
     Returns:
-        list: รายการความสำเร็จของผู้ใช้
+        list: List of user achievements
     """
+    if not username:
+        return []
+
     session = get_session()
     try:
-        # ดึงความสำเร็จของผู้ใช้
+        # Get user achievements
         achievements = (
             session.query(Achievement)
             .filter_by(username=username)
@@ -327,8 +415,37 @@ def get_user_achievements(username):
         )
         return achievements
 
+    except SQLAlchemyError as e:
+        logger.error(f"Database error retrieving user achievements: {e}")
+        return []
     except Exception as e:
-        logger.error(f"เกิดข้อผิดพลาดในการดึงความสำเร็จของผู้ใช้: {e}")
+        logger.error(f"Error retrieving user achievements: {e}")
         return []
     finally:
         close_session(session)
+
+
+def check_database_connection():
+    """
+    Check if database connection is working
+
+    Returns:
+        bool: True if connection is working
+    """
+    session = None
+    try:
+        session = get_session()
+        # Try a simple query
+        session.execute("SELECT 1")
+        logger.info("Database connection successful")
+        return True
+
+    except SQLAlchemyError as e:
+        logger.error(f"Database connection error: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Error checking database connection: {e}")
+        return False
+    finally:
+        if session:
+            close_session(session)

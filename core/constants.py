@@ -72,7 +72,7 @@ TETROMINO_COLORS = {
     "L": (235, 138, 5),  # Orange (L piece)
     "O": (235, 210, 0),  # Yellow (O piece)
     "S": (0, 190, 80),  # Green (S piece)
-    "T": (220, 0, 50),  # DENSO Red (T piece)
+    "T": DENSO_RED,  # DENSO Red (T piece)
     "Z": (235, 50, 50),  # Red (Z piece)
     "ghost": (70, 70, 85),  # Ghost piece - visible but subtle
 }
@@ -194,6 +194,10 @@ IMAGES_DIR = os.path.join(ASSETS_DIR, "images")
 SOUNDS_DIR = os.path.join(ASSETS_DIR, "sounds")
 FONTS_DIR = os.path.join(ASSETS_DIR, "fonts")
 SHADERS_DIR = os.path.join(ASSETS_DIR, "shaders")
+
+# Create directories if not exist
+for directory in [ASSETS_DIR, IMAGES_DIR, SOUNDS_DIR, FONTS_DIR]:
+    os.makedirs(directory, exist_ok=True)
 
 # Sound files
 SOUND_FILES = {

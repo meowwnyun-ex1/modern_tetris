@@ -4,12 +4,13 @@
 """
 DENSO Tetris - Sound Manager
 ---------------------------
-Class for managing game sounds and music
+Class for managing game sounds and music with improved error handling
 """
 
 import os
 import pygame
 import logging
+import time
 
 from core.constants import SOUNDS_DIR, SOUND_FILES, MUSIC_FILES
 from utils.logger import get_logger
@@ -28,90 +29,137 @@ class SoundManager:
         self.config = config
         self.logger = get_logger()
 
-        # Check if pygame.mixer is initialized
-        if not pygame.mixer.get_init():
-            try:
-                pygame.mixer.init()
-            except Exception as e:
-                self.logger.error(f"Could not initialize pygame.mixer: {e}")
+        # Initialize variables
+        self.sounds = {}
+        self.current_music = None
+        self.music_volume = 0.7
+        self.sfx_volume = 0.7
+        self.initialized = False
+
+        # Try to initialize pygame mixer
+        self._initialize_mixer()
+
+        if self.initialized:
+            # Set volume levels from config
+            self.music_volume = config["audio"]["music_volume"]
+            self.sfx_volume = config["audio"]["sfx_volume"]
+
+            # Load sound effects
+            self._load_sounds()
+
+    def _initialize_mixer(self):
+        """Initialize pygame mixer with error handling"""
+        try:
+            if pygame.mixer.get_init():
+                self.initialized = True
                 return
 
-        # Set volume levels
-        self.music_volume = config["audio"]["music_volume"]
-        self.sfx_volume = config["audio"]["sfx_volume"]
+            # Try to initialize mixer
+            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+            self.initialized = True
+            self.logger.info("Sound system initialized successfully")
 
-        # Load all sound effects
-        self.sounds = {}
-        self._load_sounds()
-
-        # Variable for music
-        self.current_music = None
+        except Exception as e:
+            self.logger.error(f"Could not initialize pygame.mixer: {e}")
+            self.initialized = False
 
     def _load_sounds(self):
-        """Load all sound files"""
+        """Load all sound files with error handling"""
+        if not self.initialized:
+            return
+
         try:
+            # Check if sounds directory exists
+            if not os.path.exists(SOUNDS_DIR):
+                os.makedirs(SOUNDS_DIR, exist_ok=True)
+                self.logger.warning(f"Created sounds directory: {SOUNDS_DIR}")
+
+            # Load each sound effect
             for sound_name, file_name in SOUND_FILES.items():
                 file_path = os.path.join(SOUNDS_DIR, file_name)
 
                 if os.path.exists(file_path):
-                    self.sounds[sound_name] = pygame.mixer.Sound(file_path)
-                    self.sounds[sound_name].set_volume(self.sfx_volume)
+                    try:
+                        self.sounds[sound_name] = pygame.mixer.Sound(file_path)
+                        self.sounds[sound_name].set_volume(self.sfx_volume)
+                    except Exception as e:
+                        self.logger.error(f"Error loading sound {file_name}: {e}")
                 else:
                     self.logger.warning(f"Sound file not found: {file_path}")
+
+                    # Create empty dummy sound to prevent errors
+                    self.sounds[sound_name] = pygame.mixer.Sound(buffer=bytearray(100))
+                    self.sounds[sound_name].set_volume(0)
+
         except Exception as e:
             self.logger.error(f"Error loading sound files: {e}")
+            # Continue without sound effects rather than crashing
 
-    def play_sound(self, sound_name):
-        """
-        Play a sound effect
+    # แก้ไขเมธอด play_sound ใน SoundManager
 
-        Args:
-            sound_name (str): Sound name (from SOUND_FILES)
-        """
-        if not self.config["audio"]["enable_sfx"]:
-            return
 
+def play_sound(self, sound_name):
+    if not self.initialized or not self.config["audio"]["enable_sfx"]:
+        return
+
+    try:
         if sound_name in self.sounds:
-            try:
+            # ตรวจสอบว่าเป็น Sound object ที่ถูกต้องหรือไม่
+            if hasattr(self.sounds[sound_name], "play"):
                 self.sounds[sound_name].play()
-            except Exception as e:
-                self.logger.error(f"Error playing sound {sound_name}: {e}")
+            else:
+                # สร้าง dummy sound ถ้าไม่ใช่ Sound object
+                self.sounds[sound_name] = pygame.mixer.Sound(buffer=bytearray(32))
+                self.sounds[sound_name].set_volume(0)
         else:
-            self.logger.warning(f"Sound {sound_name} not found")
+            self.logger.warning(f"Sound '{sound_name}' not found")
+    except Exception as e:
+        self.logger.warning(f"Error playing sound {sound_name}: {e}")
 
     def play_music(self, music_name):
         """
-        Play background music
+        Play background music with improved error handling
 
         Args:
             music_name (str): Music name (from MUSIC_FILES)
         """
-        if not self.config["audio"]["enable_music"]:
+        # Skip if music is disabled
+        if not self.initialized or not self.config["audio"]["enable_music"]:
             return
 
         # Don't replay if it's the same music
         if self.current_music == music_name:
             return
 
-        if music_name in MUSIC_FILES:
-            try:
+        # Try to play music
+        try:
+            if music_name in MUSIC_FILES:
                 file_name = MUSIC_FILES[music_name]
                 file_path = os.path.join(SOUNDS_DIR, file_name)
 
                 if os.path.exists(file_path):
+                    # Stop any current music first
+                    pygame.mixer.music.stop()
+
+                    # Load and play new music
                     pygame.mixer.music.load(file_path)
                     pygame.mixer.music.set_volume(self.music_volume)
                     pygame.mixer.music.play(-1)  # Loop indefinitely
                     self.current_music = music_name
                 else:
                     self.logger.warning(f"Music file not found: {file_path}")
-            except Exception as e:
-                self.logger.error(f"Error playing music {music_name}: {e}")
-        else:
-            self.logger.warning(f"Music {music_name} not found")
+            else:
+                self.logger.warning(f"Music '{music_name}' not defined")
+
+        except Exception as e:
+            self.logger.error(f"Error playing music {music_name}: {e}")
+            # Continue without crashing
 
     def stop_music(self):
-        """Stop current music"""
+        """Stop current music with error handling"""
+        if not self.initialized:
+            return
+
         try:
             pygame.mixer.music.stop()
             self.current_music = None
@@ -119,14 +167,20 @@ class SoundManager:
             self.logger.error(f"Error stopping music: {e}")
 
     def pause_music(self):
-        """Pause music temporarily"""
+        """Pause music temporarily with error handling"""
+        if not self.initialized:
+            return
+
         try:
             pygame.mixer.music.pause()
         except Exception as e:
             self.logger.error(f"Error pausing music: {e}")
 
     def unpause_music(self):
-        """Resume music"""
+        """Resume music with error handling"""
+        if not self.initialized:
+            return
+
         try:
             pygame.mixer.music.unpause()
         except Exception as e:
@@ -134,12 +188,17 @@ class SoundManager:
 
     def set_music_volume(self, volume):
         """
-        Set music volume
+        Set music volume with validation
 
         Args:
             volume (float): Volume level (0.0 - 1.0)
         """
+        if not self.initialized:
+            return
+
+        # Ensure volume is in valid range
         self.music_volume = max(0.0, min(1.0, volume))
+
         try:
             pygame.mixer.music.set_volume(self.music_volume)
         except Exception as e:
@@ -147,13 +206,20 @@ class SoundManager:
 
     def set_sfx_volume(self, volume):
         """
-        Set sound effects volume
+        Set sound effects volume with validation
 
         Args:
             volume (float): Volume level (0.0 - 1.0)
         """
+        if not self.initialized:
+            return
+
+        # Ensure volume is in valid range
         self.sfx_volume = max(0.0, min(1.0, volume))
 
         # Adjust volume for all effects
-        for sound in self.sounds.values():
-            sound.set_volume(self.sfx_volume)
+        try:
+            for sound in self.sounds.values():
+                sound.set_volume(self.sfx_volume)
+        except Exception as e:
+            self.logger.error(f"Error setting SFX volume: {e}")

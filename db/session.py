@@ -2,105 +2,193 @@
 # -*- coding: utf-8 -*-
 
 """
-Modern Tetris - Database Session
+DENSO Tetris - Database Session
 -----------------------------
-จัดการเซสชันและการเชื่อมต่อกับฐานข้อมูล
+Manage database sessions and connections with improved error handling
 """
 
 import os
 import yaml
 import logging
+import sqlite3
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.pool import QueuePool
 
 from db.models import Base
 
-# ตัวแปรส่วนกลางสำหรับเซสชันฐานข้อมูล
+# Global variables for database session
 engine = None
 Session = None
 logger = logging.getLogger("tetris.db")
 
 
 def load_db_config():
-    """โหลดการตั้งค่าฐานข้อมูลจากไฟล์ config"""
+    """
+    Load database configuration from config file with error handling
+
+    Returns:
+        dict: Database configuration
+    """
     try:
-        with open("config.yaml", "r", encoding="utf-8") as f:
-            config = yaml.safe_load(f)
-            return config["database"]
+        # Look for config file
+        if os.path.exists("config.yaml"):
+            with open("config.yaml", "r", encoding="utf-8") as f:
+                config = yaml.safe_load(f)
+                return config["database"]
+        else:
+            logger.warning("config.yaml not found, using default database settings")
     except Exception as e:
-        logger.error(f"ไม่สามารถโหลดการตั้งค่าฐานข้อมูลได้: {e}")
-        # ใช้ค่าเริ่มต้น
-        return {"engine": "sqlite", "sqlite": {"path": "./tetris.db"}}
+        logger.error(f"Could not load database configuration: {e}")
+
+    # Default config if loading fails
+    return {"engine": "sqlite", "sqlite": {"path": "./tetris.db"}}
 
 
 def init_db():
-    """เริ่มต้นการเชื่อมต่อกับฐานข้อมูลและสร้างตาราง"""
+    """Initialize database connection and create tables with error handling"""
     global engine, Session
 
     # โหลดการตั้งค่า
     db_config = load_db_config()
     db_engine = db_config.get("engine", "sqlite")
 
-    # สร้าง URI สำหรับเชื่อมต่อฐานข้อมูล
-    if db_engine == "sqlite":
-        db_path = db_config["sqlite"]["path"]
-        # สร้างโฟลเดอร์หากไม่มี
-        os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-        db_uri = f"sqlite:///{db_path}"
-
-    elif db_engine == "mysql":
-        config = db_config["mysql"]
-        db_uri = f"mysql+pymysql://{config['user']}:{config['password']}@{config['host']}:{config['port']}/{config['database']}"
-
-    elif db_engine == "postgresql":
-        config = db_config["postgresql"]
-        db_uri = f"postgresql://{config['user']}:{config['password']}@{config['host']}:{config['port']}/{config['database']}"
-
-    else:
-        # ใช้ SQLite เป็นค่าเริ่มต้น
-        db_uri = "sqlite:///tetris.db"
-
-    # สร้าง Engine
     try:
+        # สร้าง database URI
+        if db_engine == "sqlite":
+            db_path = db_config["sqlite"]["path"]
+
+            # สร้างไดเร็กทอรีถ้าไม่มี
+            db_dir = os.path.dirname(os.path.abspath(db_path))
+            os.makedirs(db_dir, exist_ok=True)
+
+            db_uri = f"sqlite:///{db_path}"
+
+            # ตรวจสอบว่าสามารถเขียนไปยังตำแหน่งนี้ได้หรือไม่
+            try:
+                # ทดสอบว่าสามารถเปิดฐานข้อมูล SQLite ได้
+                temp_conn = sqlite3.connect(db_path)
+                temp_conn.close()
+            except Exception as e:
+                logger.error(f"ไม่สามารถเข้าถึงฐานข้อมูล SQLite ที่ {db_path}: {e}")
+                # ใช้ฐานข้อมูลในหน่วยความจำแทน
+                db_uri = "sqlite:///:memory:"
+                logger.warning("เปลี่ยนไปใช้ฐานข้อมูล SQLite ในหน่วยความจำแทน")
+
+        # สร้าง Engine พร้อมการจัดการพูลการเชื่อมต่อ
         engine = create_engine(
             db_uri,
-            poolclass=QueuePool,
-            pool_size=5,
-            max_overflow=10,
-            pool_timeout=30,
-            pool_recycle=1800,
-            echo=False,
+            connect_args={"check_same_thread": False} if db_engine == "sqlite" else {},
+            echo=False,  # Set to True for SQL debugging
         )
 
         # สร้างตาราง
-        Base.metadata.create_all(engine)
+        try:
+            Base.metadata.create_all(engine)
+        except Exception as e:
+            logger.error(f"เกิดข้อผิดพลาดในการสร้างตารางฐานข้อมูล: {e}")
 
-        # สร้างเซสชันแฟคทอรี
+        # สร้าง session factory
         session_factory = sessionmaker(bind=engine)
         Session = scoped_session(session_factory)
 
-        logger.info(f"เชื่อมต่อกับฐานข้อมูล {db_engine} สำเร็จ")
-
+        logger.info(f"เชื่อมต่อกับฐานข้อมูล: {db_engine}")
+        return True
     except Exception as e:
         logger.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อกับฐานข้อมูล: {e}")
-        # ใช้ SQLite ในหน่วยความจำเป็นแผนสำรอง
-        engine = create_engine("sqlite:///:memory:")
-        Base.metadata.create_all(engine)
-        session_factory = sessionmaker(bind=engine)
-        Session = scoped_session(session_factory)
+        # ใช้ SQLite in-memory เป็น fallback
+        try:
+            engine = create_engine("sqlite:///:memory:")
+            Base.metadata.create_all(engine)
+            session_factory = sessionmaker(bind=engine)
+            Session = scoped_session(session_factory)
+            logger.warning("ใช้ฐานข้อมูล SQLite ในหน่วยความจำเป็น fallback")
+            return True
+        except:
+            logger.critical("ไม่สามารถสร้างฐานข้อมูลสำรองได้")
+            return False
+
+
+def check_database_connection():
+    """
+    ตรวจสอบว่าการเชื่อมต่อฐานข้อมูลทำงานอยู่หรือไม่
+
+    Returns:
+        bool: True ถ้าการเชื่อมต่อทำงาน
+    """
+    if not Session:
+        return False
+
+    session = None
+    try:
+        session = get_session()
+        # ลองคิวรี่อย่างง่าย
+        session.execute("SELECT 1")
+        logger.info("การเชื่อมต่อฐานข้อมูลทำงานได้ปกติ")
+        return True
+
+    except Exception as e:
+        logger.error(f"ข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล: {e}")
+        return False
+    finally:
+        if session:
+            try:
+                close_session(session)
+            except:
+                pass
 
 
 def get_session():
-    """รับอ็อบเจกต์เซสชัน"""
+    """
+    Get a database session with initialization check
+
+    Returns:
+        sqlalchemy.orm.Session: Database session
+    """
     if Session is None:
         init_db()
-    return Session()
+
+    try:
+        return Session()
+    except Exception as e:
+        logger.error(f"Error creating database session: {e}")
+        # Reinitialize database connection
+        init_db()
+        return Session()
 
 
 def close_session(session):
-    """ปิดเซสชัน"""
+    """
+    Close database session safely
+
+    Args:
+        session: Database session to close
+    """
+    if session:
+        try:
+            session.close()
+        except Exception as e:
+            logger.error(f"Error closing database session: {e}")
+
+
+def check_database_connection():
+    """
+    Check if database connection is working
+
+    Returns:
+        bool: True if connection is working
+    """
+    session = None
     try:
-        session.close()
+        session = get_session()
+        # Try a simple query
+        session.execute("SELECT 1")
+        logger.info("Database connection successful")
+        return True
+
     except Exception as e:
-        logger.error(f"เกิดข้อผิดพลาดในการปิดเซสชัน: {e}")
+        logger.error(f"Database connection error: {e}")
+        return False
+    finally:
+        if session:
+            close_session(session)
