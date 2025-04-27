@@ -1,8 +1,16 @@
-pygame==2.6.0
-numpy==1.24.3
-sqlalchemy==2.0.19
-bcrypt==4.0.1
-pygame-particles==1.1
-pygame-shaders==1.0.9
-pyyaml==6.0.1
-pillow==10.0.0
+# Core dependencies
+pygame>=2.5.0
+PyYAML>=6.0
+numpy>=1.24.0
+
+# Database support
+SQLAlchemy>=2.0.0
+bcrypt>=4.0.0
+
+# Optional dependencies (can be commented out if not needed)
+Pillow>=10.0.0  # For image processing
+
+# Development tools (uncomment for development)
+# pytest>=7.0.0
+# black>=23.0.0
+# pylint>=2.15.0

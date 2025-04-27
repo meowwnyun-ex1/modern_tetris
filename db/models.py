@@ -8,10 +8,36 @@ Database models for storing player statistics and game data
 """
 
 import datetime
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, create_engine
-from sqlalchemy.ext.declarative import declarative_base
+import json
+import logging
 
-Base = declarative_base()
+try:
+    from sqlalchemy import (
+        Column,
+        Integer,
+        String,
+        Float,
+        Boolean,
+        DateTime,
+        create_engine,
+    )
+    from sqlalchemy.ext.declarative import declarative_base
+
+    # Base class for all models
+    Base = declarative_base()
+    SQLALCHEMY_AVAILABLE = True
+except ImportError:
+    # If SQLAlchemy is not available, create a dummy Base class
+    class DummyBase:
+        pass
+
+    Base = DummyBase
+    SQLALCHEMY_AVAILABLE = False
+
+    # Log the import error
+    logging.getLogger("tetris.db").error(
+        "SQLAlchemy not available. Database models will not work."
+    )
 
 
 class User(Base):
@@ -26,6 +52,14 @@ class User(Base):
 
     def __repr__(self):
         return f"<User(username='{self.username}')>"
+
+    def to_dict(self):
+        """Convert object to dictionary (without password)"""
+        return {
+            "id": self.id,
+            "username": self.username,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
 
 
 class GameScore(Base):
@@ -46,6 +80,19 @@ class GameScore(Base):
         victory_str = "Victory" if self.victory else ""
         return f"<GameScore(username='{self.username}', score={self.score}, level={self.level}{victory_str})>"
 
+    def to_dict(self):
+        """Convert object to dictionary"""
+        return {
+            "id": self.id,
+            "username": self.username,
+            "score": self.score,
+            "level": self.level,
+            "lines_cleared": self.lines_cleared,
+            "time_played": self.time_played,
+            "victory": self.victory,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+        }
+
 
 class GameSettings(Base):
     """Player settings data model"""
@@ -53,7 +100,7 @@ class GameSettings(Base):
     __tablename__ = "game_settings"
 
     id = Column(Integer, primary_key=True)
-    username = Column(String(50), nullable=False)
+    username = Column(String(50), nullable=False, unique=True)
     theme = Column(String(20), default="denso")
     music_volume = Column(Float, default=0.7)
     sfx_volume = Column(Float, default=0.8)
@@ -63,6 +110,25 @@ class GameSettings(Base):
 
     def __repr__(self):
         return f"<GameSettings(username='{self.username}', theme='{self.theme}')>"
+
+    def to_dict(self):
+        """Convert object to dictionary"""
+        # Parse controls from JSON
+        try:
+            controls = json.loads(self.controls)
+        except:
+            controls = {}
+
+        return {
+            "id": self.id,
+            "username": self.username,
+            "theme": self.theme,
+            "music_volume": self.music_volume,
+            "sfx_volume": self.sfx_volume,
+            "show_ghost": bool(self.show_ghost),
+            "controls": controls,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+        }
 
 
 class Achievement(Base):
@@ -79,3 +145,14 @@ class Achievement(Base):
 
     def __repr__(self):
         return f"<Achievement(username='{self.username}', achievement='{self.achievement_name}')>"
+
+    def to_dict(self):
+        """Convert object to dictionary"""
+        return {
+            "id": self.id,
+            "username": self.username,
+            "achievement_id": self.achievement_id,
+            "achievement_name": self.achievement_name,
+            "description": self.description,
+            "achieved_at": self.achieved_at.isoformat() if self.achieved_at else None,
+        }

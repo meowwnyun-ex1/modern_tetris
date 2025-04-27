@@ -9,15 +9,110 @@ SQL commands for retrieving and saving data with improved error handling
 
 import logging
 import datetime
-import bcrypt
-import sqlite3
-from sqlalchemy import desc
-from sqlalchemy.exc import SQLAlchemyError
+import traceback
 
-from db.session import get_session, close_session
-from db.models import User, GameScore, GameSettings, Achievement
+try:
+    import bcrypt
+
+    BCRYPT_AVAILABLE = True
+except ImportError:
+    BCRYPT_AVAILABLE = False
+    logging.getLogger("tetris.db").error(
+        "bcrypt not available. Password hashing will not work properly."
+    )
+
+try:
+    from sqlalchemy import desc
+    from sqlalchemy.exc import SQLAlchemyError
+
+    SQLALCHEMY_AVAILABLE = True
+except ImportError:
+    SQLALCHEMY_AVAILABLE = False
+    logging.getLogger("tetris.db").error(
+        "SQLAlchemy not available. Database queries will not work."
+    )
+
+# Import local modules with error handling
+try:
+    from db.session import get_session, close_session, session_scope
+    from db.models import User, GameScore, GameSettings, Achievement
+except ImportError as e:
+    logging.getLogger("tetris.db").error(f"Error importing database modules: {e}")
+    # Create dummy objects to prevent errors if imports fail
+    if "User" not in locals():
+
+        class User:
+            pass
+
+    if "GameScore" not in locals():
+
+        class GameScore:
+            pass
+
+    if "GameSettings" not in locals():
+
+        class GameSettings:
+            pass
+
+    if "Achievement" not in locals():
+
+        class Achievement:
+            pass
+
+    def session_scope():
+        yield None
+
 
 logger = logging.getLogger("tetris.db")
+
+
+def _hash_password(password):
+    """
+    Hash password securely
+
+    Args:
+        password (str): Plain text password
+
+    Returns:
+        str: Hashed password or None if hashing fails
+    """
+    if not BCRYPT_AVAILABLE:
+        logger.warning(
+            "bcrypt not available, storing password in plain text (NOT SECURE)"
+        )
+        return f"INSECURE:{password}"
+
+    try:
+        return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    except Exception as e:
+        logger.error(f"Password hashing error: {e}")
+        return None
+
+
+def _verify_password(plain_password, hashed_password):
+    """
+    Verify password against stored hash
+
+    Args:
+        plain_password (str): Plain text password to verify
+        hashed_password (str): Stored password hash
+
+    Returns:
+        bool: True if password matches, False otherwise
+    """
+    if not BCRYPT_AVAILABLE:
+        logger.warning(
+            "bcrypt not available, checking password in plain text (NOT SECURE)"
+        )
+        return hashed_password == f"INSECURE:{plain_password}"
+
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+        )
+    except Exception as e:
+        logger.error(f"Password verification error: {e}")
+        return False
 
 
 def register_user(username, password):
@@ -31,6 +126,10 @@ def register_user(username, password):
     Returns:
         bool: True if registration was successful
     """
+    if not SQLALCHEMY_AVAILABLE:
+        logger.error("Database functionality not available")
+        return False
+
     if not username or not password:
         logger.warning("Registration failed: empty username or password")
         return False
@@ -39,41 +138,33 @@ def register_user(username, password):
         logger.warning("Registration failed: password too short")
         return False
 
-    session = get_session()
-    try:
-        # Check if username already exists
-        existing_user = session.query(User).filter_by(username=username).first()
-        if existing_user:
-            logger.warning(f"Username {username} already exists")
+    with session_scope() as session:
+        if session is None:
             return False
 
-        # Hash password
         try:
-            password_hash = bcrypt.hashpw(
-                password.encode("utf-8"), bcrypt.gensalt()
-            ).decode("utf-8")
+            # Check if username already exists
+            existing_user = session.query(User).filter_by(username=username).first()
+            if existing_user:
+                logger.warning(f"Username {username} already exists")
+                return False
+
+            # Hash password
+            password_hash = _hash_password(password)
+            if not password_hash:
+                return False
+
+            # Create new user
+            new_user = User(username=username, password_hash=password_hash)
+            session.add(new_user)
+
+            logger.info(f"User {username} registered successfully")
+            return True
+
         except Exception as e:
-            logger.error(f"Password hashing error: {e}")
+            logger.error(f"Database error during user registration: {e}")
+            logger.debug(traceback.format_exc())
             return False
-
-        # Create new user
-        new_user = User(username=username, password_hash=password_hash)
-        session.add(new_user)
-        session.commit()
-
-        logger.info(f"User {username} registered successfully")
-        return True
-
-    except SQLAlchemyError as e:
-        session.rollback()
-        logger.error(f"Database error during user registration: {e}")
-        return False
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Error during user registration: {e}")
-        return False
-    finally:
-        close_session(session)
 
 
 def authenticate_user(username, password):
@@ -87,22 +178,26 @@ def authenticate_user(username, password):
     Returns:
         bool: True if authentication was successful
     """
+    if not SQLALCHEMY_AVAILABLE:
+        logger.error("Database functionality not available")
+        return False
+
     if not username or not password:
         return False
 
-    session = get_session()
-    try:
-        # Find user
-        user = session.query(User).filter_by(username=username).first()
-        if not user:
-            logger.warning(f"Authentication failed: user {username} not found")
+    with session_scope() as session:
+        if session is None:
             return False
 
-        # Check password
         try:
-            is_valid = bcrypt.checkpw(
-                password.encode("utf-8"), user.password_hash.encode("utf-8")
-            )
+            # Find user
+            user = session.query(User).filter_by(username=username).first()
+            if not user:
+                logger.warning(f"Authentication failed: user {username} not found")
+                return False
+
+            # Check password
+            is_valid = _verify_password(password, user.password_hash)
 
             if is_valid:
                 logger.info(f"User {username} authenticated successfully")
@@ -114,20 +209,12 @@ def authenticate_user(username, password):
             return is_valid
 
         except Exception as e:
-            logger.error(f"Password verification error: {e}")
+            logger.error(f"Database error during authentication: {e}")
+            logger.debug(traceback.format_exc())
             return False
 
-    except SQLAlchemyError as e:
-        logger.error(f"Database error during authentication: {e}")
-        return False
-    except Exception as e:
-        logger.error(f"Error during authentication: {e}")
-        return False
-    finally:
-        close_session(session)
 
-
-def save_game_score(username, score, level, lines, time_played):
+def save_game_score(username, score, level, lines, time_played, victory=False):
     """
     Save game score with validation
 
@@ -137,10 +224,15 @@ def save_game_score(username, score, level, lines, time_played):
         level (int): Level
         lines (int): Number of lines cleared
         time_played (float): Time played (seconds)
+        victory (bool): Whether the game ended in victory
 
     Returns:
         bool: True if score was saved successfully
     """
+    if not SQLALCHEMY_AVAILABLE:
+        logger.error("Database functionality not available")
+        return False
+
     if not username:
         logger.warning("Cannot save score: no username provided")
         return False
@@ -155,33 +247,30 @@ def save_game_score(username, score, level, lines, time_played):
         logger.error(f"Invalid score data: {e}")
         return False
 
-    session = get_session()
-    try:
-        # Create new score entry
-        new_score = GameScore(
-            username=username,
-            score=score,
-            level=level,
-            lines_cleared=lines,
-            time_played=time_played,
-            timestamp=datetime.datetime.now(),
-        )
-        session.add(new_score)
-        session.commit()
+    with session_scope() as session:
+        if session is None:
+            return False
 
-        logger.info(f"Score {score} for user {username} saved successfully")
-        return True
+        try:
+            # Create new score entry
+            new_score = GameScore(
+                username=username,
+                score=score,
+                level=level,
+                lines_cleared=lines,
+                time_played=time_played,
+                victory=bool(victory),
+                timestamp=datetime.datetime.now(),
+            )
+            session.add(new_score)
 
-    except SQLAlchemyError as e:
-        session.rollback()
-        logger.error(f"Database error saving score: {e}")
-        return False
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Error saving score: {e}")
-        return False
-    finally:
-        close_session(session)
+            logger.info(f"Score {score} for user {username} saved successfully")
+            return True
+
+        except Exception as e:
+            logger.error(f"Database error saving score: {e}")
+            logger.debug(traceback.format_exc())
+            return False
 
 
 def get_top_scores(limit=10):
@@ -194,22 +283,28 @@ def get_top_scores(limit=10):
     Returns:
         list: List of top scores
     """
-    session = get_session()
-    try:
-        # Get top scores
-        scores = (
-            session.query(GameScore).order_by(desc(GameScore.score)).limit(limit).all()
-        )
-        return scores
+    if not SQLALCHEMY_AVAILABLE:
+        logger.error("Database functionality not available")
+        return []
 
-    except SQLAlchemyError as e:
-        logger.error(f"Database error retrieving top scores: {e}")
-        return []
-    except Exception as e:
-        logger.error(f"Error retrieving top scores: {e}")
-        return []
-    finally:
-        close_session(session)
+    with session_scope() as session:
+        if session is None:
+            return []
+
+        try:
+            # Get top scores
+            scores = (
+                session.query(GameScore)
+                .order_by(desc(GameScore.score))
+                .limit(limit)
+                .all()
+            )
+            return scores
+
+        except Exception as e:
+            logger.error(f"Database error retrieving top scores: {e}")
+            logger.debug(traceback.format_exc())
+            return []
 
 
 def get_user_best_score(username):
@@ -222,28 +317,31 @@ def get_user_best_score(username):
     Returns:
         GameScore: User's best score entry
     """
+    if not SQLALCHEMY_AVAILABLE:
+        logger.error("Database functionality not available")
+        return None
+
     if not username:
         return None
 
-    session = get_session()
-    try:
-        # Get user's best score
-        score = (
-            session.query(GameScore)
-            .filter_by(username=username)
-            .order_by(desc(GameScore.score))
-            .first()
-        )
-        return score
+    with session_scope() as session:
+        if session is None:
+            return None
 
-    except SQLAlchemyError as e:
-        logger.error(f"Database error retrieving user's best score: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Error retrieving user's best score: {e}")
-        return None
-    finally:
-        close_session(session)
+        try:
+            # Get user's best score
+            score = (
+                session.query(GameScore)
+                .filter_by(username=username)
+                .order_by(desc(GameScore.score))
+                .first()
+            )
+            return score
+
+        except Exception as e:
+            logger.error(f"Database error retrieving user's best score: {e}")
+            logger.debug(traceback.format_exc())
+            return None
 
 
 def save_user_settings(username, settings):
@@ -257,54 +355,77 @@ def save_user_settings(username, settings):
     Returns:
         bool: True if settings were saved successfully
     """
+    if not SQLALCHEMY_AVAILABLE:
+        logger.error("Database functionality not available")
+        return False
+
     if not username or not isinstance(settings, dict):
         return False
 
-    session = get_session()
-    try:
-        # Check if settings already exist
-        user_settings = session.query(GameSettings).filter_by(username=username).first()
+    with session_scope() as session:
+        if session is None:
+            return False
 
-        if user_settings:
-            # Update existing settings
-            user_settings.theme = settings.get("theme", user_settings.theme)
-            user_settings.music_volume = settings.get(
-                "music_volume", user_settings.music_volume
+        try:
+            # Check if settings already exist
+            user_settings = (
+                session.query(GameSettings).filter_by(username=username).first()
             )
-            user_settings.sfx_volume = settings.get(
-                "sfx_volume", user_settings.sfx_volume
-            )
-            user_settings.show_ghost = settings.get(
-                "show_ghost", user_settings.show_ghost
-            )
-            user_settings.controls = settings.get("controls", user_settings.controls)
-            user_settings.timestamp = datetime.datetime.now()
-        else:
-            # Create new settings
-            user_settings = GameSettings(
-                username=username,
-                theme=settings.get("theme", "denso"),
-                music_volume=settings.get("music_volume", 0.7),
-                sfx_volume=settings.get("sfx_volume", 0.8),
-                show_ghost=settings.get("show_ghost", 1),
-                controls=settings.get("controls", "{}"),
-            )
-            session.add(user_settings)
 
-        session.commit()
-        logger.info(f"Settings for user {username} saved successfully")
-        return True
+            if user_settings:
+                # Update existing settings
+                user_settings.theme = settings.get("theme", user_settings.theme)
+                user_settings.music_volume = settings.get(
+                    "music_volume", user_settings.music_volume
+                )
+                user_settings.sfx_volume = settings.get(
+                    "sfx_volume", user_settings.sfx_volume
+                )
+                user_settings.show_ghost = settings.get(
+                    "show_ghost", user_settings.show_ghost
+                )
 
-    except SQLAlchemyError as e:
-        session.rollback()
-        logger.error(f"Database error saving settings: {e}")
-        return False
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Error saving settings: {e}")
-        return False
-    finally:
-        close_session(session)
+                # Handle controls separately to ensure it's valid JSON
+                if "controls" in settings:
+                    import json
+
+                    try:
+                        # Ensure it's valid JSON by encoding and decoding
+                        controls_json = json.dumps(settings["controls"])
+                        user_settings.controls = controls_json
+                    except:
+                        # Keep existing controls if new ones are invalid
+                        logger.warning(f"Invalid controls JSON for user {username}")
+
+                user_settings.timestamp = datetime.datetime.now()
+            else:
+                # Create new settings
+                import json
+
+                controls_json = "{}"
+                try:
+                    if "controls" in settings:
+                        controls_json = json.dumps(settings["controls"])
+                except:
+                    logger.warning(f"Invalid controls JSON for user {username}")
+
+                user_settings = GameSettings(
+                    username=username,
+                    theme=settings.get("theme", "denso"),
+                    music_volume=settings.get("music_volume", 0.7),
+                    sfx_volume=settings.get("sfx_volume", 0.8),
+                    show_ghost=settings.get("show_ghost", 1),
+                    controls=controls_json,
+                )
+                session.add(user_settings)
+
+            logger.info(f"Settings for user {username} saved successfully")
+            return True
+
+        except Exception as e:
+            logger.error(f"Database error saving settings: {e}")
+            logger.debug(traceback.format_exc())
+            return False
 
 
 def get_user_settings(username):
@@ -317,23 +438,26 @@ def get_user_settings(username):
     Returns:
         GameSettings: User settings
     """
+    if not SQLALCHEMY_AVAILABLE:
+        logger.error("Database functionality not available")
+        return None
+
     if not username:
         return None
 
-    session = get_session()
-    try:
-        # Get user settings
-        settings = session.query(GameSettings).filter_by(username=username).first()
-        return settings
+    with session_scope() as session:
+        if session is None:
+            return None
 
-    except SQLAlchemyError as e:
-        logger.error(f"Database error retrieving user settings: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Error retrieving user settings: {e}")
-        return None
-    finally:
-        close_session(session)
+        try:
+            # Get user settings
+            settings = session.query(GameSettings).filter_by(username=username).first()
+            return settings
+
+        except Exception as e:
+            logger.error(f"Database error retrieving user settings: {e}")
+            logger.debug(traceback.format_exc())
+            return None
 
 
 def unlock_achievement(username, achievement_id, achievement_name, description):
@@ -349,46 +473,48 @@ def unlock_achievement(username, achievement_id, achievement_name, description):
     Returns:
         bool: True if achievement was unlocked successfully
     """
+    if not SQLALCHEMY_AVAILABLE:
+        logger.error("Database functionality not available")
+        return False
+
     if not username or not achievement_id or not achievement_name:
         return False
 
-    session = get_session()
-    try:
-        # Check if achievement already unlocked
-        existing = (
-            session.query(Achievement)
-            .filter_by(username=username, achievement_id=achievement_id)
-            .first()
-        )
-
-        if existing:
-            logger.info(f"Achievement {achievement_id} already unlocked")
+    with session_scope() as session:
+        if session is None:
             return False
 
-        # Create new achievement
-        new_achievement = Achievement(
-            username=username,
-            achievement_id=achievement_id,
-            achievement_name=achievement_name,
-            description=description,
-            achieved_at=datetime.datetime.now(),
-        )
-        session.add(new_achievement)
-        session.commit()
+        try:
+            # Check if achievement already unlocked
+            existing = (
+                session.query(Achievement)
+                .filter_by(username=username, achievement_id=achievement_id)
+                .first()
+            )
 
-        logger.info(f"Achievement {achievement_name} unlocked for user {username}")
-        return True
+            if existing:
+                logger.info(
+                    f"Achievement {achievement_id} already unlocked for {username}"
+                )
+                return False
 
-    except SQLAlchemyError as e:
-        session.rollback()
-        logger.error(f"Database error unlocking achievement: {e}")
-        return False
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Error unlocking achievement: {e}")
-        return False
-    finally:
-        close_session(session)
+            # Create new achievement
+            new_achievement = Achievement(
+                username=username,
+                achievement_id=achievement_id,
+                achievement_name=achievement_name,
+                description=description,
+                achieved_at=datetime.datetime.now(),
+            )
+            session.add(new_achievement)
+
+            logger.info(f"Achievement {achievement_name} unlocked for user {username}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Database error unlocking achievement: {e}")
+            logger.debug(traceback.format_exc())
+            return False
 
 
 def get_user_achievements(username):
@@ -401,28 +527,31 @@ def get_user_achievements(username):
     Returns:
         list: List of user achievements
     """
+    if not SQLALCHEMY_AVAILABLE:
+        logger.error("Database functionality not available")
+        return []
+
     if not username:
         return []
 
-    session = get_session()
-    try:
-        # Get user achievements
-        achievements = (
-            session.query(Achievement)
-            .filter_by(username=username)
-            .order_by(Achievement.achieved_at)
-            .all()
-        )
-        return achievements
+    with session_scope() as session:
+        if session is None:
+            return []
 
-    except SQLAlchemyError as e:
-        logger.error(f"Database error retrieving user achievements: {e}")
-        return []
-    except Exception as e:
-        logger.error(f"Error retrieving user achievements: {e}")
-        return []
-    finally:
-        close_session(session)
+        try:
+            # Get user achievements
+            achievements = (
+                session.query(Achievement)
+                .filter_by(username=username)
+                .order_by(Achievement.achieved_at)
+                .all()
+            )
+            return achievements
+
+        except Exception as e:
+            logger.error(f"Database error retrieving user achievements: {e}")
+            logger.debug(traceback.format_exc())
+            return []
 
 
 def check_database_connection():
@@ -432,20 +561,20 @@ def check_database_connection():
     Returns:
         bool: True if connection is working
     """
-    session = None
-    try:
-        session = get_session()
-        # Try a simple query
-        session.execute("SELECT 1")
-        logger.info("Database connection successful")
-        return True
+    if not SQLALCHEMY_AVAILABLE:
+        logger.error("Database functionality not available")
+        return False
 
-    except SQLAlchemyError as e:
-        logger.error(f"Database connection error: {e}")
-        return False
-    except Exception as e:
-        logger.error(f"Error checking database connection: {e}")
-        return False
-    finally:
-        if session:
-            close_session(session)
+    with session_scope() as session:
+        if session is None:
+            return False
+
+        try:
+            # Try a simple query
+            session.execute("SELECT 1")
+            logger.info("Database connection successful")
+            return True
+
+        except Exception as e:
+            logger.error(f"Database connection error: {e}")
+            return False

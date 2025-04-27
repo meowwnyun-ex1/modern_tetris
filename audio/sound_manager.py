@@ -8,6 +8,9 @@ Class for managing game sounds and music with improved error handling
 """
 
 import os
+import logging
+import time
+from pathlib import Path
 
 try:
     import pygame
@@ -15,17 +18,48 @@ except ImportError:
     try:
         import pygame_ce as pygame
 
-        print("ใช้ pygame-ce แทน pygame")
+        print("Using pygame-ce instead of pygame")
     except ImportError:
-        print("กรุณาติดตั้ง pygame หรือ pygame-ce")
+        print("Please install pygame or pygame-ce")
         import sys
 
         sys.exit(1)
-import logging
-import time
 
-from core.constants import SOUNDS_DIR, SOUND_FILES, MUSIC_FILES
-from utils.logger import get_logger
+# Import constants safely with error handling
+try:
+    from core.constants import SOUNDS_DIR, SOUND_FILES, MUSIC_FILES
+except ImportError:
+    # Fallback if import fails
+    SOUNDS_DIR = Path("assets/sounds")
+    SOUND_FILES = {
+        "move": "move.wav",
+        "rotate": "rotate.wav",
+        "drop": "drop.wav",
+        "clear": "clear.wav",
+        "tetris": "tetris.wav",
+        "level_up": "level_up.wav",
+        "game_over": "game_over.wav",
+        "menu_select": "menu_select.wav",
+        "menu_change": "menu_change.wav",
+    }
+    MUSIC_FILES = {
+        "menu": "menu_theme.mp3",
+        "game": "game_theme.mp3",
+    }
+
+try:
+    from utils.logger import get_logger
+except ImportError:
+    # Fallback logger if import fails
+    def get_logger():
+        logger = logging.getLogger("tetris.sound")
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter("%(levelname)s: %(message)s")
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+            logger.setLevel(logging.INFO)
+        return logger
 
 
 class SoundManager:
@@ -82,17 +116,18 @@ class SoundManager:
 
         try:
             # Check if sounds directory exists
-            if not os.path.exists(SOUNDS_DIR):
-                os.makedirs(SOUNDS_DIR, exist_ok=True)
-                self.logger.warning(f"Created sounds directory: {SOUNDS_DIR}")
+            sound_dir = Path(SOUNDS_DIR)
+            if not sound_dir.exists():
+                sound_dir.mkdir(exist_ok=True, parents=True)
+                self.logger.warning(f"Created sounds directory: {sound_dir}")
 
             # Load each sound effect
             for sound_name, file_name in SOUND_FILES.items():
-                file_path = os.path.join(SOUNDS_DIR, file_name)
+                file_path = sound_dir / file_name
 
-                if os.path.exists(file_path):
+                if file_path.exists():
                     try:
-                        self.sounds[sound_name] = pygame.mixer.Sound(file_path)
+                        self.sounds[sound_name] = pygame.mixer.Sound(str(file_path))
                         self.sounds[sound_name].set_volume(self.sfx_volume)
                     except Exception as e:
                         self.logger.error(f"Error loading sound {file_name}: {e}")
@@ -100,8 +135,13 @@ class SoundManager:
                     self.logger.warning(f"Sound file not found: {file_path}")
 
                     # Create empty dummy sound to prevent errors
-                    self.sounds[sound_name] = pygame.mixer.Sound(buffer=bytearray(100))
-                    self.sounds[sound_name].set_volume(0)
+                    try:
+                        self.sounds[sound_name] = pygame.mixer.Sound(
+                            buffer=bytearray(100)
+                        )
+                        self.sounds[sound_name].set_volume(0)
+                    except Exception as e:
+                        self.logger.error(f"Could not create dummy sound: {e}")
 
         except Exception as e:
             self.logger.error(f"Error loading sound files: {e}")
@@ -150,14 +190,14 @@ class SoundManager:
         try:
             if music_name in MUSIC_FILES:
                 file_name = MUSIC_FILES[music_name]
-                file_path = os.path.join(SOUNDS_DIR, file_name)
+                file_path = Path(SOUNDS_DIR) / file_name
 
-                if os.path.exists(file_path):
+                if file_path.exists():
                     # Stop any current music first
                     pygame.mixer.music.stop()
 
                     # Load and play new music
-                    pygame.mixer.music.load(file_path)
+                    pygame.mixer.music.load(str(file_path))
                     pygame.mixer.music.set_volume(self.music_volume)
                     pygame.mixer.music.play(-1)  # Loop indefinitely
                     self.current_music = music_name
@@ -235,6 +275,7 @@ class SoundManager:
         # Adjust volume for all effects
         try:
             for sound in self.sounds.values():
-                sound.set_volume(self.sfx_volume)
+                if hasattr(sound, "set_volume"):
+                    sound.set_volume(self.sfx_volume)
         except Exception as e:
             self.logger.error(f"Error setting SFX volume: {e}")

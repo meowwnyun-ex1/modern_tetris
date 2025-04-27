@@ -2,12 +2,14 @@
 # -*- coding: utf-8 -*-
 
 """
-Modern Tetris - Tetromino Class
+DENSO Tetris - Tetromino Class
 ------------------------------
-คลาสนี้จัดการเกี่ยวกับบล็อกเตโตรมิโนแต่ละชิ้น
+This class handles individual tetromino blocks
 """
 
 import random
+import logging
+from utils.logger import get_logger
 
 try:
     import pygame
@@ -15,12 +17,13 @@ except ImportError:
     try:
         import pygame_ce as pygame
 
-        print("ใช้ pygame-ce แทน pygame")
+        print("Using pygame-ce instead of pygame")
     except ImportError:
-        print("กรุณาติดตั้ง pygame หรือ pygame-ce")
+        print("Please install pygame or pygame-ce")
         import sys
 
         sys.exit(1)
+
 from core.constants import (
     TETROMINO_SHAPES,
     TETROMINO_COLORS,
@@ -30,18 +33,20 @@ from core.constants import (
 
 
 class Tetromino:
-    """คลาสสำหรับบล็อกเตโตรมิโน"""
+    """Class for tetromino blocks"""
 
     def __init__(self, shape_name=None, x=0, y=0):
         """
-        สร้างบล็อกเตโตรมิโนใหม่
+        Create a new tetromino
 
         Args:
-            shape_name (str, optional): ชื่อรูปร่าง (I, J, L, O, S, T, Z) หากไม่ระบุจะสุ่ม
-            x (int, optional): ตำแหน่ง x เริ่มต้น
-            y (int, optional): ตำแหน่ง y เริ่มต้น
+            shape_name (str, optional): Shape name (I, J, L, O, S, T, Z). Random if None.
+            x (int, optional): Initial X position
+            y (int, optional): Initial Y position
         """
-        # หากไม่มีการระบุรูปร่าง ให้สุ่มหนึ่งรูปร่าง
+        self.logger = get_logger("tetris.tetromino")
+
+        # If no shape specified, choose a random one
         if shape_name is None:
             shape_name = random.choice(list(TETROMINO_SHAPES.keys()))
 
@@ -53,67 +58,74 @@ class Tetromino:
         self.x = x
         self.y = y
 
-        # สำหรับเช็ค T-spin
+        # For T-spin detection
         self.last_rotation = False
         self.t_spin = False
 
-        # สร้าง surface สำหรับวาดบล็อกล่วงหน้า
+        # Create surfaces for rendering
         self._create_surfaces()
 
     def _create_surfaces(self):
-        """สร้าง surface สำหรับวาดบล็อกล่วงหน้า เพื่อเพิ่มประสิทธิภาพ"""
-        # กำหนดขนาดสูงสุดของบล็อก (4x4)
-        max_size = 4 * GRID_SIZE
+        """Create pre-rendered surfaces for performance optimization"""
+        try:
+            # Maximum tetromino size (4x4)
+            max_size = 4 * GRID_SIZE
 
-        # สร้าง surface หลัก
-        self.surface = pygame.Surface((max_size, max_size), pygame.SRCALPHA)
+            # Main block surface
+            self.surface = pygame.Surface((max_size, max_size), pygame.SRCALPHA)
 
-        # สร้าง surface สำหรับเอฟเฟกต์เรืองแสง (สำหรับเอฟเฟกต์ bloom)
-        self.glow_surface = pygame.Surface((max_size, max_size), pygame.SRCALPHA)
+            # Glow effect surface (for bloom)
+            self.glow_surface = pygame.Surface((max_size, max_size), pygame.SRCALPHA)
 
-        # สร้าง surface สำหรับเงา (ghost piece)
-        self.ghost_surface = pygame.Surface((max_size, max_size), pygame.SRCALPHA)
+            # Ghost piece surface
+            self.ghost_surface = pygame.Surface((max_size, max_size), pygame.SRCALPHA)
 
-        # วาดบล็อกลงบน surface
-        self._update_surfaces()
+            # Draw blocks on surfaces
+            self._update_surfaces()
+        except Exception as e:
+            self.logger.error(f"Error creating tetromino surfaces: {e}")
 
     def _update_surfaces(self):
-        """อัปเดต surface ตามสถานะปัจจุบันของบล็อก"""
-        # เคลียร์ surface
-        self.surface.fill((0, 0, 0, 0))
-        self.glow_surface.fill((0, 0, 0, 0))
-        self.ghost_surface.fill((0, 0, 0, 0))
+        """Update surfaces based on current block state"""
+        try:
+            # Clear surfaces
+            self.surface.fill((0, 0, 0, 0))
+            self.glow_surface.fill((0, 0, 0, 0))
+            self.ghost_surface.fill((0, 0, 0, 0))
 
-        # วาดบล็อกแต่ละช่อง
-        current_shape = self.shape[self.rotation]
-        for x, y in current_shape:
-            # บล็อกหลัก
-            rect = pygame.Rect(x * GRID_SIZE, y * GRID_SIZE, GRID_SIZE, GRID_SIZE)
-            pygame.draw.rect(self.surface, self.color, rect)
-            pygame.draw.rect(self.surface, (255, 255, 255), rect, 1)  # เส้นขอบสีขาว
+            # Draw each block
+            current_shape = self.shape[self.rotation]
+            for x, y in current_shape:
+                # Main block
+                rect = pygame.Rect(x * GRID_SIZE, y * GRID_SIZE, GRID_SIZE, GRID_SIZE)
+                pygame.draw.rect(self.surface, self.color, rect)
+                pygame.draw.rect(self.surface, (255, 255, 255), rect, 1)  # White border
 
-            # เอฟเฟกต์เรืองแสง
-            glow_rect = rect
-            # วาดวงกลมเรืองแสงที่จุดกึ่งกลางของบล็อก
-            center = (x * GRID_SIZE + GRID_SIZE // 2, y * GRID_SIZE + GRID_SIZE // 2)
-            pygame.draw.circle(
-                self.glow_surface, (*self.glow_color, 128), center, GRID_SIZE - 5
-            )
+                # Glow effect
+                center = (
+                    x * GRID_SIZE + GRID_SIZE // 2,
+                    y * GRID_SIZE + GRID_SIZE // 2,
+                )
+                pygame.draw.circle(
+                    self.glow_surface, (*self.glow_color, 128), center, GRID_SIZE - 5
+                )
 
-            # บล็อกเงา (ghost piece)
-            ghost_rect = rect.copy()
-            ghost_color = TETROMINO_COLORS["ghost"]
-            pygame.draw.rect(self.ghost_surface, ghost_color, ghost_rect)
-            pygame.draw.rect(
-                self.ghost_surface, (100, 100, 100), ghost_rect, 1
-            )  # เส้นขอบสีเทา
+                # Ghost piece
+                ghost_rect = rect.copy()
+                ghost_color = TETROMINO_COLORS["ghost"]
+                pygame.draw.rect(self.ghost_surface, ghost_color, ghost_rect)
+                pygame.draw.rect(
+                    self.ghost_surface, (100, 100, 100), ghost_rect, 1
+                )  # Gray border
+        except Exception as e:
+            self.logger.error(f"Error updating tetromino surfaces: {e}")
 
     def get_positions(self):
         """
-        รับตำแหน่งปัจจุบันของบล็อกทั้งหมดบนบอร์ด
+        Get current block positions on the board
 
         Returns:
-            list: รายการตำแหน่ง (x, y) ของแต่ละช่องของบล็อก
+            list: List of (x, y) positions for each block
         """
         positions = []
         for block_x, block_y in self.shape[self.rotation]:
@@ -122,25 +134,25 @@ class Tetromino:
 
     def rotate(self, direction=1, board=None):
         """
-        หมุนบล็อก
+        Rotate the tetromino
 
         Args:
-            direction (int): 1 สำหรับหมุนตามเข็มนาฬิกา, -1 สำหรับหมุนทวนเข็มนาฬิกา
-            board (Board, optional): บอร์ดเกมสำหรับเช็คการชน
+            direction (int): 1 for clockwise, -1 for counter-clockwise
+            board (Board, optional): Board for collision checking
 
         Returns:
-            bool: True ถ้าหมุนสำเร็จ, False ถ้าไม่สามารถหมุนได้
+            bool: True if rotation successful, False if blocked
         """
-        # เก็บการหมุนปัจจุบัน
+        # Save current rotation
         old_rotation = self.rotation
 
-        # คำนวณการหมุนใหม่ (0-3)
+        # Calculate new rotation (0-3)
         new_rotation = (self.rotation + direction) % 4
         self.rotation = new_rotation
 
-        # ถ้ามีการระบุบอร์ด ให้ตรวจสอบการชน
+        # If board specified, check collisions
         if board is not None:
-            # ใช้ระบบ Super Rotation System (SRS) เพื่อพยายามหมุนโดยไม่ชน
+            # Use Super Rotation System (SRS) to try different positions
             kicks = self._get_wall_kicks(old_rotation, new_rotation)
 
             for kick_x, kick_y in kicks:
@@ -148,40 +160,39 @@ class Tetromino:
                 test_y = self.y + kick_y
 
                 if not board.check_collision(self, test_x, test_y):
-                    # หมุนสำเร็จ
+                    # Rotation successful
                     self.x = test_x
                     self.y = test_y
                     self.last_rotation = True
 
-                    # ตรวจสอบ T-spin (เฉพาะบล็อก T)
+                    # Check for T-spin (T block only)
                     if self.shape_name == "T":
                         self.check_tspin(board)
 
-                    # อัปเดต surface
+                    # Update rendering surfaces
                     self._update_surfaces()
                     return True
 
-            # ถ้าไม่สามารถหมุนได้ ให้กลับไปใช้การหมุนเดิม
+            # If no valid position found, revert rotation
             self.rotation = old_rotation
             return False
 
-        # อัปเดต surface
+        # Update surfaces
         self._update_surfaces()
         return True
 
     def _get_wall_kicks(self, old_rot, new_rot):
         """
-        รับการเปลี่ยนตำแหน่งสำหรับระบบ Super Rotation System (SRS)
+        Get wall kick offsets for Super Rotation System (SRS)
 
         Args:
-            old_rot (int): การหมุนเดิม (0-3)
-            new_rot (int): การหมุนใหม่ (0-3)
+            old_rot (int): Current rotation (0-3)
+            new_rot (int): New rotation (0-3)
 
         Returns:
-            list: รายการของการเปลี่ยนตำแหน่ง (dx, dy) ที่จะลอง
+            list: List of (dx, dy) offsets to try
         """
-        # ตารางการเปลี่ยนตำแหน่งสำหรับ Super Rotation System
-        # สำหรับบล็อก I
+        # Wall kick data for I tetromino
         if self.shape_name == "I":
             kicks = {
                 (0, 1): [(0, 0), (-2, 0), (1, 0), (-2, -1), (1, 2)],
@@ -193,7 +204,7 @@ class Tetromino:
                 (3, 0): [(0, 0), (1, 0), (-2, 0), (1, -2), (-2, 1)],
                 (0, 3): [(0, 0), (-1, 0), (2, 0), (-1, 2), (2, -1)],
             }
-        # สำหรับบล็อกอื่น ๆ (J, L, S, T, Z)
+        # Wall kick data for other tetrominos (J, L, S, T, Z)
         else:
             kicks = {
                 (0, 1): [(0, 0), (-1, 0), (-1, 1), (0, -2), (-1, -2)],
@@ -206,57 +217,57 @@ class Tetromino:
                 (0, 3): [(0, 0), (1, 0), (1, 1), (0, -2), (1, -2)],
             }
 
-        # บล็อก O ไม่มีการเปลี่ยนตำแหน่ง
+        # O tetromino doesn't need kicks (symmetrical)
         if self.shape_name == "O":
             return [(0, 0)]
 
-        # รับการเปลี่ยนตำแหน่งที่เหมาะสม
+        # Get appropriate kicks
         key = (old_rot, new_rot)
         return kicks.get(key, [(0, 0)])
 
     def move(self, dx, dy, board=None):
         """
-        เคลื่อนที่บล็อก
+        Move the tetromino
 
         Args:
-            dx (int): การเปลี่ยนแปลงในแกน x
-            dy (int): การเปลี่ยนแปลงในแกน y
-            board (Board, optional): บอร์ดเกมสำหรับเช็คการชน
+            dx (int): X movement (-1 for left, 1 for right)
+            dy (int): Y movement (1 for down)
+            board (Board, optional): Board for collision checking
 
         Returns:
-            bool: True ถ้าเคลื่อนที่สำเร็จ, False ถ้าไม่สามารถเคลื่อนที่ได้
+            bool: True if movement successful, False if blocked
         """
-        # คำนวณตำแหน่งใหม่
+        # Calculate new position
         new_x = self.x + dx
         new_y = self.y + dy
 
-        # ตรวจสอบการชนถ้ามีการระบุบอร์ด
+        # Check for collisions if board provided
         if board is not None:
             if board.check_collision(self, new_x, new_y):
                 return False
 
-        # อัปเดตตำแหน่ง
+        # Update position
         self.x = new_x
         self.y = new_y
 
-        # รีเซ็ตสถานะการหมุนล่าสุด (สำหรับตรวจสอบ T-spin)
+        # Reset last rotation state (for T-spin detection)
         self.last_rotation = False
 
         return True
 
     def hard_drop(self, board):
         """
-        ปล่อยบล็อกลงด้านล่างทันที
+        Drop block to bottom immediately
 
         Args:
-            board (Board): บอร์ดเกมสำหรับเช็คการชน
+            board (Board): Game board
 
         Returns:
-            int: จำนวนแถวที่ตก (สำหรับคำนวณคะแนน)
+            int: Number of cells dropped (for scoring)
         """
         drop_distance = 0
 
-        # เคลื่อนที่ลงจนกว่าจะชน
+        # Move down until collision
         while not board.check_collision(self, self.x, self.y + 1):
             self.y += 1
             drop_distance += 1
@@ -265,17 +276,17 @@ class Tetromino:
 
     def get_ghost_position(self, board):
         """
-        คำนวณตำแหน่งของ ghost piece (เงาด้านล่าง)
+        Calculate ghost piece position (shadow at bottom)
 
         Args:
-            board (Board): บอร์ดเกมสำหรับเช็คการชน
+            board (Board): Game board
 
         Returns:
-            int: ตำแหน่ง y ที่บล็อกจะตกลงไป
+            int: Y position where block would land
         """
         ghost_y = self.y
 
-        # เคลื่อนที่ลงจนกว่าจะชน
+        # Move down until collision
         while not board.check_collision(self, self.x, ghost_y + 1):
             ghost_y += 1
 
@@ -283,28 +294,29 @@ class Tetromino:
 
     def check_tspin(self, board):
         """
-        ตรวจสอบว่าเป็น T-spin หรือไม่ (บล็อก T ที่ถูกหมุนและมีช่องรอบๆ 3 ช่องขึ้นไปที่ถูกบล็อก)
+        Check if current position is a T-spin
+        (T block with 3+ corners blocked)
 
         Args:
-            board (Board): บอร์ดเกม
+            board (Board): Game board
 
         Returns:
-            bool: True ถ้าเป็น T-spin
+            bool: True if T-spin detected
         """
-        # ตรวจสอบเฉพาะบล็อก T ที่เพิ่งหมุน
+        # Only check T blocks that were just rotated
         if self.shape_name != "T" or not self.last_rotation:
             self.t_spin = False
             return False
 
-        # ตรวจสอบมุมทั้ง 4 มุมรอบๆ บล็อก T
+        # Check all 4 corners around the T block
         corners = [
-            (self.x, self.y),  # บนซ้าย
-            (self.x + 2, self.y),  # บนขวา
-            (self.x, self.y + 2),  # ล่างซ้าย
-            (self.x + 2, self.y + 2),  # ล่างขวา
+            (self.x, self.y),  # Top-left
+            (self.x + 2, self.y),  # Top-right
+            (self.x, self.y + 2),  # Bottom-left
+            (self.x + 2, self.y + 2),  # Bottom-right
         ]
 
-        # นับจำนวนมุมที่ถูกบล็อก
+        # Count blocked corners
         blocked_corners = 0
         for corner_x, corner_y in corners:
             if (
@@ -316,39 +328,48 @@ class Tetromino:
             ):
                 blocked_corners += 1
 
-        # T-spin ต้องมีอย่างน้อย 3 มุมที่ถูกบล็อก
+        # T-spin requires at least 3 corners blocked
         self.t_spin = blocked_corners >= 3
         return self.t_spin
 
     def render(self, surface, x, y):
         """
-        วาดบล็อกบนพื้นผิวที่กำหนด
+        Render the tetromino on the surface
 
         Args:
-            surface (pygame.Surface): พื้นผิวที่จะวาด
-            x (int): ตำแหน่ง x
-            y (int): ตำแหน่ง y
+            surface (pygame.Surface): Surface to render on
+            x (int): X position on screen
+            y (int): Y position on screen
         """
-        surface.blit(self.surface, (x, y))
+        try:
+            surface.blit(self.surface, (x, y))
+        except Exception as e:
+            self.logger.error(f"Error rendering tetromino: {e}")
 
     def render_ghost(self, surface, x, y):
         """
-        วาดเงาของบล็อกบนพื้นผิวที่กำหนด
+        Render ghost (shadow) tetromino on the surface
 
         Args:
-            surface (pygame.Surface): พื้นผิวที่จะวาด
-            x (int): ตำแหน่ง x
-            y (int): ตำแหน่ง y
+            surface (pygame.Surface): Surface to render on
+            x (int): X position on screen
+            y (int): Y position on screen
         """
-        surface.blit(self.ghost_surface, (x, y))
+        try:
+            surface.blit(self.ghost_surface, (x, y))
+        except Exception as e:
+            self.logger.error(f"Error rendering tetromino ghost: {e}")
 
     def render_glow(self, surface, x, y):
         """
-        วาดเอฟเฟกต์เรืองแสงของบล็อกบนพื้นผิวที่กำหนด
+        Render glow effect for tetromino (for bloom effect)
 
         Args:
-            surface (pygame.Surface): พื้นผิวที่จะวาด
-            x (int): ตำแหน่ง x
-            y (int): ตำแหน่ง y
+            surface (pygame.Surface): Surface to render on
+            x (int): X position on screen
+            y (int): Y position on screen
         """
-        surface.blit(self.glow_surface, (x, y))
+        try:
+            surface.blit(self.glow_surface, (x, y))
+        except Exception as e:
+            self.logger.error(f"Error rendering tetromino glow: {e}")

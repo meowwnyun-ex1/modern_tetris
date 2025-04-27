@@ -12,6 +12,29 @@ import os
 import sys
 import yaml
 import logging
+import traceback
+import time
+from pathlib import Path
+
+
+# Set up exception handling before imports
+def global_exception_handler(exctype, value, tb):
+    """Global exception handler to log unhandled exceptions"""
+    logger = logging.getLogger("tetris")
+    logger.critical(f"Unhandled exception: {value}")
+    logger.critical("".join(traceback.format_exception(exctype, value, tb)))
+    sys.__excepthook__(exctype, value, tb)
+
+    # Show error message to user if pygame is initialized
+    try:
+        if pygame.display.get_init():
+            show_crash_screen(f"Error: {str(value)}")
+    except:
+        pass
+
+
+# Install global exception handler
+sys.__excepthook__ = global_exception_handler
 
 try:
     import pygame
@@ -19,31 +42,28 @@ except ImportError:
     try:
         import pygame_ce as pygame
 
-        print("ใช้ pygame-ce แทน pygame")
+        print("Using pygame-ce instead of pygame")
     except ImportError:
-        print("กรุณาติดตั้ง pygame หรือ pygame-ce")
-        import sys
-
+        print("Please install pygame or pygame-ce")
         sys.exit(1)
-import traceback
-import time
-from pygame.locals import *
 
-# Import internal modules
+# Try to import internal modules after pygame is loaded
 try:
-    from core.game import Game
     from core.constants import (
         SCREEN_WIDTH,
         SCREEN_HEIGHT,
         DENSO_RED,
         TITLE,
         UI_BG,
-    )  # Fix missing constants
+    )
+    from core.game import Game
     from ui.menu import MainMenu
     from utils.logger import setup_logger
     from db.session import init_db
 except ImportError as e:
     print(f"Error importing modules: {e}")
+    print(f"Current directory: {os.getcwd()}")
+    print(f"Python path: {sys.path}")
     sys.exit(1)
 
 
@@ -81,20 +101,20 @@ def create_important_assets():
             logger.error(f"Could not create icon: {e}")
 
     # Create dummy files for essential sounds
-    try:
-        create_empty_sound("assets/sounds/menu_select.wav")
-        create_empty_sound("assets/sounds/game_over.wav")
-        create_empty_sound("assets/sounds/menu_theme.mp3")
-        create_empty_sound("assets/sounds/game_theme.mp3")
-        create_empty_sound("assets/sounds/move.wav")
-        create_empty_sound("assets/sounds/rotate.wav")
-        create_empty_sound("assets/sounds/drop.wav")
-        create_empty_sound("assets/sounds/clear.wav")
-        create_empty_sound("assets/sounds/tetris.wav")
-        create_empty_sound("assets/sounds/level_up.wav")
-        create_empty_sound("assets/sounds/menu_change.wav")
-    except Exception as e:
-        logger.error(f"Could not create dummy sounds: {e}")
+    for sound_name in [
+        "menu_select.wav",
+        "game_over.wav",
+        "menu_theme.mp3",
+        "game_theme.mp3",
+        "move.wav",
+        "rotate.wav",
+        "drop.wav",
+        "clear.wav",
+        "tetris.wav",
+        "level_up.wav",
+        "menu_change.wav",
+    ]:
+        create_empty_sound(f"assets/sounds/{sound_name}")
 
 
 def create_empty_sound(filename):
@@ -170,8 +190,9 @@ def load_config():
     }
 
     try:
-        if os.path.exists("config.yaml"):
-            with open("config.yaml", "r", encoding="utf-8") as f:
+        config_path = Path("config.yaml")
+        if config_path.exists():
+            with open(config_path, "r", encoding="utf-8") as f:
                 loaded_config = yaml.safe_load(f)
 
             # Deep merge configs
@@ -189,13 +210,95 @@ def load_config():
         else:
             logging.warning("config.yaml not found, using default configuration")
             # Save default config for future use
-            with open("config.yaml", "w", encoding="utf-8") as f:
+            with open(config_path, "w", encoding="utf-8") as f:
                 yaml.dump(default_config, f, default_flow_style=False)
 
     except Exception as e:
         logging.error(f"Could not load config file: {e}")
 
     return default_config
+
+
+def show_crash_screen(error_message):
+    """Display a crash screen when fatal errors occur"""
+    try:
+        # Setup minimal display if not already initialized
+        if not pygame.display.get_init():
+            pygame.init()
+            screen = pygame.display.set_mode((800, 600))
+            pygame.display.set_caption("DENSO Tetris - Error")
+        else:
+            screen = pygame.display.get_surface()
+
+        # Clear screen
+        screen.fill((20, 20, 30))
+
+        # Create fonts
+        title_font = pygame.font.SysFont("Arial", 32, bold=True)
+        text_font = pygame.font.SysFont("Arial", 18)
+
+        # Render error title
+        title = title_font.render("DENSO Tetris - Critical Error", True, (255, 50, 50))
+        screen.blit(title, (screen.get_width() // 2 - title.get_width() // 2, 100))
+
+        # Render error message
+        y_pos = 200
+        wrapped_text = wrap_text(error_message, text_font, screen.get_width() - 100)
+        for line in wrapped_text:
+            text = text_font.render(line, True, (255, 255, 255))
+            screen.blit(text, (screen.get_width() // 2 - text.get_width() // 2, y_pos))
+            y_pos += 30
+
+        # Render help text
+        help_text = text_font.render("Press any key to exit", True, (200, 200, 200))
+        screen.blit(
+            help_text,
+            (screen.get_width() // 2 - help_text.get_width() // 2, y_pos + 40),
+        )
+
+        # Update display
+        pygame.display.flip()
+
+        # Wait for key press
+        waiting = True
+        while waiting:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT or event.type == pygame.KEYDOWN:
+                    waiting = False
+            pygame.time.wait(100)
+
+    except Exception as e:
+        print(f"Failed to show crash screen: {e}")
+    finally:
+        try:
+            pygame.quit()
+        except:
+            pass
+
+
+def wrap_text(text, font, max_width):
+    """Wrap text to fit within a given width"""
+    words = text.split(" ")
+    lines = []
+    current_line = []
+
+    for word in words:
+        # Test width
+        test_line = " ".join(current_line + [word])
+        width = font.size(test_line)[0]
+
+        if width <= max_width:
+            current_line.append(word)
+        else:
+            # Start a new line
+            lines.append(" ".join(current_line))
+            current_line = [word]
+
+    # Add the last line
+    if current_line:
+        lines.append(" ".join(current_line))
+
+    return lines
 
 
 def fallback_menu(screen):
@@ -261,56 +364,61 @@ def main():
     logger = setup_logger()
     logger.info("DENSO Tetris starting...")
 
-    # Load configuration
-    config = load_config()
-
-    # Initialize pygame
-    pygame.init()
-
-    # Create display window
-    screen = pygame.display.set_mode(
-        (config["screen"]["width"], config["screen"]["height"]),
-        pygame.FULLSCREEN if config["screen"]["fullscreen"] else 0,
-    )
-    pygame.display.set_caption(TITLE)
-
-    # Try to set window icon
     try:
-        icon_path = "assets/images/icon.png"
-        if os.path.exists(icon_path):
-            icon = pygame.image.load(icon_path)
-            pygame.display.set_icon(icon)
-    except Exception as e:
-        logger.warning(f"Could not load window icon: {e}")
+        # Load configuration
+        config = load_config()
 
-    # Create required assets directory structure
-    ensure_assets_directory()
+        # Initialize pygame
+        pygame.init()
 
-    # Initialize database connection
-    try:
-        init_db()
-    except Exception as e:
-        logger.error(f"Could not initialize database: {e}")
+        # Set better exception handling
+        sys.excepthook = global_exception_handler
 
-    # Create first scene
-    try:
-        current_scene = MainMenu(screen, config)
-        logger.info("Main menu initialized successfully")
-    except Exception as e:
-        logger.error(f"Could not initialize main menu: {e}\n{traceback.format_exc()}")
-        current_scene = fallback_menu(screen)
-        if current_scene is None:
-            pygame.quit()
-            sys.exit(1)
+        # Create display window
+        screen = pygame.display.set_mode(
+            (config["screen"]["width"], config["screen"]["height"]),
+            pygame.FULLSCREEN if config["screen"]["fullscreen"] else 0,
+        )
+        pygame.display.set_caption(TITLE)
 
-    # Main game loop
-    clock = pygame.time.Clock()
-    running = True
-    last_time = time.time()
-    accumulated_time = 0
-    fixed_time_step = 1.0 / config["screen"].get("target_fps", 60)
+        # Try to set window icon
+        try:
+            icon_path = "assets/images/icon.png"
+            if os.path.exists(icon_path):
+                icon = pygame.image.load(icon_path)
+                pygame.display.set_icon(icon)
+        except Exception as e:
+            logger.warning(f"Could not load window icon: {e}")
 
-    try:
+        # Create required assets directory structure
+        ensure_assets_directory()
+
+        # Initialize database connection
+        try:
+            init_db()
+        except Exception as e:
+            logger.error(f"Could not initialize database: {e}")
+
+        # Create first scene
+        try:
+            current_scene = MainMenu(screen, config)
+            logger.info("Main menu initialized successfully")
+        except Exception as e:
+            logger.error(
+                f"Could not initialize main menu: {e}\n{traceback.format_exc()}"
+            )
+            current_scene = fallback_menu(screen)
+            if current_scene is None:
+                pygame.quit()
+                sys.exit(1)
+
+        # Main game loop
+        clock = pygame.time.Clock()
+        running = True
+        last_time = time.time()
+        accumulated_time = 0
+        fixed_time_step = 1.0 / config["screen"].get("target_fps", 60)
+
         while running:
             # Custom time measurement
             current_time = time.time()
@@ -337,7 +445,7 @@ def main():
                     current_scene.handle_event(event)
 
             # Prepare variable for fixed update tracking
-            update_count = 0.0
+            update_count = 0
 
             # Fixed update steps for consistent physics (limit updates)
             while (
@@ -387,6 +495,7 @@ def main():
         logger.info("Game terminated by user (KeyboardInterrupt)")
     except Exception as e:
         logger.critical(f"Critical error in main loop: {e}\n{traceback.format_exc()}")
+        show_crash_screen(str(e))
     finally:
         # Clean up and exit
         logger.info("Closing application")

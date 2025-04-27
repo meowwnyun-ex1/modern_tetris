@@ -7,36 +7,56 @@ DENSO Tetris - Game Constants
 This file stores various constants used in the game
 """
 
+import os
+from pathlib import Path
+
+# Import pygame key constants (fixed circular import issue)
 try:
     import pygame
+    from pygame.locals import (
+        K_LEFT,
+        K_RIGHT,
+        K_DOWN,
+        K_SPACE,
+        K_UP,
+        K_x,
+        K_z,
+        K_LCTRL,
+        K_c,
+        K_LSHIFT,
+        K_p,
+        K_ESCAPE,
+        K_a,
+        K_d,
+        K_s,
+    )
 except ImportError:
     try:
         import pygame_ce as pygame
-
-        print("ใช้ pygame-ce แทน pygame")
+        from pygame_ce.locals import (
+            K_LEFT,
+            K_RIGHT,
+            K_DOWN,
+            K_SPACE,
+            K_UP,
+            K_x,
+            K_z,
+            K_LCTRL,
+            K_c,
+            K_LSHIFT,
+            K_p,
+            K_ESCAPE,
+            K_a,
+            K_d,
+            K_s,
+        )
     except ImportError:
-        print("กรุณาติดตั้ง pygame หรือ pygame-ce")
-        import sys
-
-        sys.exit(1)
-from pygame.locals import (
-    K_LEFT,
-    K_RIGHT,
-    K_DOWN,
-    K_SPACE,
-    K_UP,
-    K_x,
-    K_z,
-    K_LCTRL,
-    K_c,
-    K_LSHIFT,
-    K_p,
-    K_ESCAPE,
-    K_a,
-    K_d,
-    K_s,
-)
-import os
+        # Define fallback key values if pygame not available
+        # These match pygame's key constants
+        K_LEFT, K_RIGHT, K_DOWN, K_SPACE = 276, 275, 274, 32
+        K_UP, K_x, K_z, K_LCTRL = 273, 120, 122, 306
+        K_c, K_LSHIFT, K_p, K_ESCAPE = 99, 304, 112, 27
+        K_a, K_d, K_s = 97, 100, 115
 
 # Screen basics - Optimized for 14" notebook in windowed mode
 SCREEN_WIDTH = 720
@@ -204,16 +224,18 @@ DEFAULT_CONTROLS = {
     "PAUSE": [K_p, K_ESCAPE],
 }
 
-# Assets paths
-ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets")
-IMAGES_DIR = os.path.join(ASSETS_DIR, "images")
-SOUNDS_DIR = os.path.join(ASSETS_DIR, "sounds")
-FONTS_DIR = os.path.join(ASSETS_DIR, "fonts")
-SHADERS_DIR = os.path.join(ASSETS_DIR, "shaders")
+# Assets paths with improved path handling
+ASSETS_DIR = (
+    Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / "assets"
+)
+IMAGES_DIR = ASSETS_DIR / "images"
+SOUNDS_DIR = ASSETS_DIR / "sounds"
+FONTS_DIR = ASSETS_DIR / "fonts"
+SHADERS_DIR = ASSETS_DIR / "shaders"
 
 # Create directories if not exist
 for directory in [ASSETS_DIR, IMAGES_DIR, SOUNDS_DIR, FONTS_DIR]:
-    os.makedirs(directory, exist_ok=True)
+    directory.mkdir(exist_ok=True, parents=True)
 
 # Sound files
 SOUND_FILES = {
@@ -228,8 +250,8 @@ SOUND_FILES = {
     "menu_change": "menu_change.wav",
     "t_spin": "t_spin.wav",
     "hold": "hold.wav",
-    "button_hover": "button_hover.wav",  # New sound for button hover
-    "button_click": "button_click.wav",  # New sound for button click
+    "button_hover": "button_hover.wav",
+    "button_click": "button_click.wav",
 }
 
 # Music files

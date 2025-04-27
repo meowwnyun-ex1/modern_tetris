@@ -2,10 +2,13 @@
 # -*- coding: utf-8 -*-
 
 """
-Modern Tetris - Board Class
+DENSO Tetris - Board Class
 --------------------------
-คลาสนี้จัดการเกี่ยวกับบอร์ดเกมและการปฏิสัมพันธ์กับเตโตรมิโน
+This class handles the game board and interactions with tetrominos
 """
+
+import logging
+from utils.logger import get_logger
 
 try:
     import pygame
@@ -13,13 +16,13 @@ except ImportError:
     try:
         import pygame_ce as pygame
 
-        print("ใช้ pygame-ce แทน pygame")
+        print("Using pygame-ce instead of pygame")
     except ImportError:
-        print("กรุณาติดตั้ง pygame หรือ pygame-ce")
+        print("Please install pygame or pygame-ce")
         import sys
 
         sys.exit(1)
-import random
+
 from core.constants import (
     BOARD_WIDTH,
     BOARD_HEIGHT,
@@ -38,63 +41,86 @@ from core.constants import (
     SCORE_TETRIS,
     SCORE_T_SPIN,
 )
-from core.tetromino import Tetromino
 
 
 class Board:
-    """คลาสสำหรับบอร์ดเกม Tetris"""
+    """Class for Tetris game board"""
 
-    def __init__(self, width=BOARD_WIDTH, height=BOARD_HEIGHT):
+    def __init__(self, width=BOARD_WIDTH, height=BOARD_HEIGHT, config=None):
         """
-        สร้างบอร์ดเกมใหม่
+        Create a new game board
 
         Args:
-            width (int, optional): ความกว้างของบอร์ด
-            height (int, optional): ความสูงของบอร์ด
+            width (int, optional): Board width in cells
+            height (int, optional): Board height in cells
+            config (dict, optional): Game configuration
         """
         self.width = width
         self.height = height
         self.x = BOARD_X
         self.y = BOARD_Y
+        self.config = config or {}
+        self.logger = get_logger("tetris.board")
 
-        # สร้างตารางว่าง
+        # Create empty grid
         self.reset_grid()
 
-        # สร้าง surface สำหรับวาดบอร์ด
-        self.board_surface = pygame.Surface(
-            (width * GRID_SIZE, height * GRID_SIZE), pygame.SRCALPHA
-        )
-        self.border_surface = pygame.Surface(
-            ((width + 2) * GRID_SIZE, (height + 2) * GRID_SIZE), pygame.SRCALPHA
-        )
-        self.grid_surface = pygame.Surface(
-            (width * GRID_SIZE, height * GRID_SIZE), pygame.SRCALPHA
-        )
-        self.glow_surface = pygame.Surface(
-            (width * GRID_SIZE, height * GRID_SIZE), pygame.SRCALPHA
-        )
+        # Create surfaces for drawing
+        self.create_surfaces()
 
-        # สำหรับเอฟเฟกต์การล้างแถว
+        # Line clearing effect states
         self.clearing_lines = []
         self.clearing_timer = 0
-        self.clearing_effect = 0  # สำหรับเอฟเฟกต์แอนิเมชัน
+        self.clearing_effect = 0  # For animation effects
 
-        # วาดเส้นตารางไว้ล่วงหน้าสำหรับเพิ่มประสิทธิภาพ
+        # Pre-draw grid lines for performance
         self._draw_grid()
 
-        # สร้างขอบบอร์ด
+        # Create board border
         self._draw_border()
 
+    def create_surfaces(self):
+        """Create rendering surfaces with error handling"""
+        try:
+            # Main board surface
+            self.board_surface = pygame.Surface(
+                (self.width * GRID_SIZE, self.height * GRID_SIZE), pygame.SRCALPHA
+            )
+
+            # Border surface
+            self.border_surface = pygame.Surface(
+                ((self.width + 2) * GRID_SIZE, (self.height + 2) * GRID_SIZE),
+                pygame.SRCALPHA,
+            )
+
+            # Grid lines surface
+            self.grid_surface = pygame.Surface(
+                (self.width * GRID_SIZE, self.height * GRID_SIZE), pygame.SRCALPHA
+            )
+
+            # Glow effect surface
+            self.glow_surface = pygame.Surface(
+                (self.width * GRID_SIZE, self.height * GRID_SIZE), pygame.SRCALPHA
+            )
+
+        except pygame.error as e:
+            self.logger.error(f"Error creating board surfaces: {e}")
+            # Create minimal surfaces to prevent crashes
+            self.board_surface = pygame.Surface((1, 1))
+            self.border_surface = pygame.Surface((1, 1))
+            self.grid_surface = pygame.Surface((1, 1))
+            self.glow_surface = pygame.Surface((1, 1))
+
     def reset_grid(self):
-        """รีเซ็ตตารางเกมให้ว่าง"""
-        # สร้างตารางแบบ 2 มิติ (height x width) เริ่มต้นเป็น None ทั้งหมด
+        """Reset the game grid to empty"""
+        # Create a 2D grid (height x width) initialized with None
         self.grid = [[None for _ in range(self.width)] for _ in range(self.height)]
 
     def _draw_grid(self):
-        """วาดเส้นตารางบนพื้นผิว grid_surface"""
-        self.grid_surface.fill((0, 0, 0, 0))  # โปร่งใส
+        """Draw grid lines on grid_surface"""
+        self.grid_surface.fill((0, 0, 0, 0))  # Transparent
 
-        # วาดเส้นแนวนอน
+        # Draw horizontal lines
         for y in range(self.height + 1):
             pygame.draw.line(
                 self.grid_surface,
@@ -104,7 +130,7 @@ class Board:
                 1,
             )
 
-        # วาดเส้นแนวตั้ง
+        # Draw vertical lines
         for x in range(self.width + 1):
             pygame.draw.line(
                 self.grid_surface,
@@ -115,27 +141,27 @@ class Board:
             )
 
     def _draw_border(self):
-        """วาดขอบบอร์ดบนพื้นผิว border_surface"""
+        """Draw board border on border_surface"""
         self.border_surface.fill(DARK_GRAY)
 
-        # วาดขอบด้านใน (พื้นที่เกม)
+        # Draw inner area (game area)
         inner_rect = pygame.Rect(
             GRID_SIZE, GRID_SIZE, self.width * GRID_SIZE, self.height * GRID_SIZE
         )
         pygame.draw.rect(self.border_surface, BLACK, inner_rect)
 
-        # วาดเส้นขอบสีขาว
+        # Draw white border lines
         pygame.draw.rect(self.border_surface, WHITE, inner_rect, 2)
 
     def update(self, dt):
         """
-        อัปเดตสถานะของบอร์ด
+        Update board state
 
         Args:
-            dt (float): เวลาที่ผ่านไปตั้งแต่การอัปเดตล่าสุด (วินาที)
+            dt (float): Time delta in seconds
 
         Returns:
-            dict: ข้อมูลการอัปเดต เช่น คะแนน, แถวที่ล้าง, ฯลฯ
+            dict: Update data (score, lines cleared, etc.)
         """
         result = {
             "lines_cleared": 0,
@@ -146,16 +172,16 @@ class Board:
             "clearing_complete": False,
         }
 
-        # ถ้ากำลังล้างแถว
+        # If currently clearing lines
         if self.clearing_lines:
-            self.clearing_timer += dt * 1000  # แปลงเป็นมิลลิวินาที
+            self.clearing_timer += dt * 1000  # Convert to milliseconds
             self.clearing_effect = min(1.0, self.clearing_timer / LINE_CLEAR_DELAY)
 
-            # เมื่อหมดเวลาการแสดงเอฟเฟกต์ ให้ล้างแถวจริงๆ
+            # When effect time is complete, actually clear the lines
             if self.clearing_timer >= LINE_CLEAR_DELAY:
                 lines_count = len(self.clearing_lines)
 
-                # คำนวณคะแนน
+                # Calculate score
                 if lines_count == 1:
                     result["score"] = SCORE_SINGLE
                 elif lines_count == 2:
@@ -166,18 +192,18 @@ class Board:
                     result["score"] = SCORE_TETRIS
                     result["tetris"] = True
 
-                # ลบแถวที่ทำเครื่องหมายไว้
+                # Remove the marked lines
                 for line in sorted(self.clearing_lines):
-                    # ลบแถวที่ทำเครื่องหมาย
+                    # Remove the marked line
                     self.grid.pop(line)
-                    # เพิ่มแถวว่างด้านบน
+                    # Add empty line at top
                     self.grid.insert(0, [None for _ in range(self.width)])
 
-                # อัปเดตค่าที่ส่งคืน
+                # Update return values
                 result["lines_cleared"] = lines_count
                 result["clearing_complete"] = True
 
-                # รีเซ็ตสถานะการล้างแถว
+                # Reset line clearing state
                 self.clearing_lines = []
                 self.clearing_timer = 0
                 self.clearing_effect = 0
@@ -185,7 +211,17 @@ class Board:
         return result
 
     def check_collision(self, tetromino, x, y):
-        """Check collision between tetromino and board"""
+        """
+        Check collision between tetromino and board
+
+        Args:
+            tetromino (Tetromino): Tetromino to check
+            x (int): X position to check
+            y (int): Y position to check
+
+        Returns:
+            bool: True if collision, False otherwise
+        """
         # Check each cell of the tetromino
         for block_x, block_y in tetromino.shape[tetromino.rotation]:
             grid_x = x + block_x
@@ -204,41 +240,41 @@ class Board:
 
     def lock_tetromino(self, tetromino):
         """
-        ล็อคบล็อกเตโตรมิโนลงบนบอร์ด
+        Lock a tetromino onto the board
 
         Args:
-            tetromino (Tetromino): บล็อกเตโตรมิโนที่จะล็อค
+            tetromino (Tetromino): Tetromino to lock
 
         Returns:
-            bool: True ถ้าล็อคสำเร็จ, False ถ้าล็อคแล้วเกมจบ (บล็อกอยู่เหนือบอร์ด)
+            bool: True if locked successfully, False if game over
         """
-        # วางบล็อกลงบนตาราง
+        # Place blocks on the grid
         for block_x, block_y in tetromino.shape[tetromino.rotation]:
             grid_x = tetromino.x + block_x
             grid_y = tetromino.y + block_y
 
-            # ตรวจสอบว่าอยู่บนบอร์ดหรือไม่
+            # Check if block is on the board
             if grid_y < 0:
-                return False  # เกมจบ (บล็อกอยู่เหนือบอร์ด)
+                return False  # Game over (block above board)
 
-            # เก็บสีของบล็อกลงในตาราง
+            # Store block color in grid
             self.grid[grid_y][grid_x] = tetromino.color
 
-        # ตรวจสอบแถวที่เต็ม
+        # Check for complete lines
         self.check_lines()
 
         return True
 
     def check_lines(self):
         """
-        ตรวจสอบแถวที่เต็มและทำเครื่องหมายเพื่อล้าง
+        Check for completed lines and mark them for clearing
 
         Returns:
-            list: รายการของแถวที่จะถูกล้าง
+            list: List of lines to be cleared
         """
         self.clearing_lines = []
 
-        # ตรวจสอบแต่ละแถวจากล่างขึ้นบน
+        # Check each row from bottom to top
         for y in range(self.height - 1, -1, -1):
             if all(self.grid[y][x] is not None for x in range(self.width)):
                 self.clearing_lines.append(y)
@@ -247,12 +283,12 @@ class Board:
 
     def is_game_over(self):
         """
-        ตรวจสอบว่าเกมจบหรือไม่ (มีบล็อกในแถวบนสุด)
+        Check if game is over (blocks in top rows)
 
         Returns:
-            bool: True ถ้าเกมจบ, False ถ้าเกมยังดำเนินอยู่
+            bool: True if game over, False if game still running
         """
-        # ตรวจสอบแถวบนสุด (2 แถวแรก - บางครั้งบล็อกอาจจะสูงกว่าขอบบน)
+        # Check top rows (first 2 rows - sometimes blocks may extend above top edge)
         for y in range(2):
             for x in range(self.width):
                 if self.grid[y][x] is not None:
@@ -260,78 +296,119 @@ class Board:
         return False
 
     def render(self, surface):
-        """Render the board"""
-        # Draw border
-        surface.blit(self.border_surface, (self.x - GRID_SIZE, self.y - GRID_SIZE))
+        """
+        Render the board
 
-        # Reset surfaces
-        self.board_surface.fill(BLACK)
-        self.glow_surface.fill((0, 0, 0, 0))
+        Args:
+            surface (pygame.Surface): Surface to render on
+        """
+        try:
+            # Draw border
+            surface.blit(self.border_surface, (self.x - GRID_SIZE, self.y - GRID_SIZE))
 
-        # Draw grid
-        self.board_surface.blit(self.grid_surface, (0, 0))
+            # Reset surfaces
+            self.board_surface.fill(BLACK)
+            self.glow_surface.fill((0, 0, 0, 0))
 
-        # Draw locked blocks
-        for y in range(self.height):
-            for x in range(self.width):
-                color = self.grid[y][x]
-                if color:
-                    # Draw block
-                    rect = pygame.Rect(
-                        x * GRID_SIZE, y * GRID_SIZE, GRID_SIZE, GRID_SIZE
+            # Draw grid
+            self.board_surface.blit(self.grid_surface, (0, 0))
+
+            # Draw locked blocks
+            for y in range(self.height):
+                for x in range(self.width):
+                    color = self.grid[y][x]
+                    if color:
+                        # Draw block
+                        rect = pygame.Rect(
+                            x * GRID_SIZE, y * GRID_SIZE, GRID_SIZE, GRID_SIZE
+                        )
+                        pygame.draw.rect(self.board_surface, color, rect)
+                        pygame.draw.rect(self.board_surface, WHITE, rect, 1)
+
+                        # Draw glow effect if enabled
+                        if self.config.get("graphics", {}).get("bloom_effect", True):
+                            glow_color = (*color, 64)  # Add alpha
+                            center = (
+                                x * GRID_SIZE + GRID_SIZE // 2,
+                                y * GRID_SIZE + GRID_SIZE // 2,
+                            )
+                            pygame.draw.circle(
+                                self.glow_surface, glow_color, center, GRID_SIZE - 5
+                            )
+
+            # Draw line clear effect
+            if self.clearing_lines and self.clearing_effect > 0:
+                self._render_line_clear_effect()
+
+            # Blit surfaces
+            surface.blit(self.board_surface, (self.x, self.y))
+            surface.blit(
+                self.glow_surface, (self.x, self.y), special_flags=pygame.BLEND_ADD
+            )
+        except Exception as e:
+            self.logger.error(f"Error rendering board: {e}")
+
+    def _render_line_clear_effect(self):
+        """Render line clearing effect animation"""
+        try:
+            # Draw white flash on cleared lines
+            flash_alpha = int(255 * (1.0 - self.clearing_effect))
+
+            for line in self.clearing_lines:
+                flash_rect = pygame.Rect(
+                    0, line * GRID_SIZE, self.width * GRID_SIZE, GRID_SIZE
+                )
+                flash_surface = pygame.Surface(
+                    (flash_rect.width, flash_rect.height), pygame.SRCALPHA
+                )
+                flash_surface.fill((255, 255, 255, flash_alpha))
+                self.board_surface.blit(flash_surface, flash_rect)
+
+                # Add glow effect
+                glow_color = (255, 255, 255, flash_alpha // 2)
+                for x in range(self.width):
+                    center = (
+                        x * GRID_SIZE + GRID_SIZE // 2,
+                        line * GRID_SIZE + GRID_SIZE // 2,
                     )
-                    pygame.draw.rect(self.board_surface, color, rect)
-                    pygame.draw.rect(self.board_surface, WHITE, rect, 1)
-
-                    # Draw glow effect
-                    if self.config["graphics"].get("bloom_effect", True):
-                        glow_color = (*color, 64)
-                        center = (
-                            x * GRID_SIZE + GRID_SIZE // 2,
-                            y * GRID_SIZE + GRID_SIZE // 2,
-                        )
-                        pygame.draw.circle(
-                            self.glow_surface, glow_color, center, GRID_SIZE - 5
-                        )
-
-        # Draw line clear effect
-        if self.clearing_lines and self.clearing_effect > 0:
-            self._render_line_clear_effect()
-
-        # Blit surfaces
-        surface.blit(self.board_surface, (self.x, self.y))
-        surface.blit(
-            self.glow_surface, (self.x, self.y), special_flags=pygame.BLEND_ADD
-        )
+                    pygame.draw.circle(self.glow_surface, glow_color, center, GRID_SIZE)
+        except Exception as e:
+            self.logger.error(f"Error rendering line clear effect: {e}")
 
     def render_ghost(self, surface, tetromino, ghost_y):
         """
-        วาดเงาของบล็อกเตโตรมิโนบนบอร์ด
+        Render ghost tetromino (shadow)
 
         Args:
-            surface (pygame.Surface): พื้นผิวที่จะวาด
-            tetromino (Tetromino): บล็อกเตโตรมิโนที่จะแสดงเงา
-            ghost_y (int): ตำแหน่ง y ของเงา
+            surface (pygame.Surface): Surface to render on
+            tetromino (Tetromino): Tetromino to render shadow for
+            ghost_y (int): Y position of ghost
         """
-        # คำนวณตำแหน่ง x, y บนหน้าจอ
-        screen_x = self.x + tetromino.x * GRID_SIZE
-        screen_y = self.y + ghost_y * GRID_SIZE
+        try:
+            # Calculate screen position
+            screen_x = self.x + tetromino.x * GRID_SIZE
+            screen_y = self.y + ghost_y * GRID_SIZE
 
-        # วาดเงาบล็อก
-        tetromino.render_ghost(surface, screen_x, screen_y)
+            # Draw ghost blocks
+            tetromino.render_ghost(surface, screen_x, screen_y)
+        except Exception as e:
+            self.logger.error(f"Error rendering ghost: {e}")
 
     def render_tetromino(self, surface, tetromino):
         """
-        วาดบล็อกเตโตรมิโนปัจจุบันบนบอร์ด
+        Render current tetromino
 
         Args:
-            surface (pygame.Surface): พื้นผิวที่จะวาด
-            tetromino (Tetromino): บล็อกเตโตรมิโนที่จะวาด
+            surface (pygame.Surface): Surface to render on
+            tetromino (Tetromino): Tetromino to render
         """
-        # คำนวณตำแหน่ง x, y บนหน้าจอ
-        screen_x = self.x + tetromino.x * GRID_SIZE
-        screen_y = self.y + tetromino.y * GRID_SIZE
+        try:
+            # Calculate screen position
+            screen_x = self.x + tetromino.x * GRID_SIZE
+            screen_y = self.y + tetromino.y * GRID_SIZE
 
-        # วาดบล็อกและเอฟเฟกต์เรืองแสง
-        tetromino.render(surface, screen_x, screen_y)
-        tetromino.render_glow(surface, screen_x, screen_y)
+            # Draw block and glow effects
+            tetromino.render(surface, screen_x, screen_y)
+            tetromino.render_glow(surface, screen_x, screen_y)
+        except Exception as e:
+            self.logger.error(f"Error rendering tetromino: {e}")

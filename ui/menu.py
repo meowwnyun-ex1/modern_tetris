@@ -13,15 +13,18 @@ import sys
 import math
 import time
 import random
+import logging
+from pathlib import Path
 
 try:
     import pygame
 except ImportError:
     try:
         import pygame_ce as pygame
-        print("ใช้ pygame-ce แทน pygame")
+
+        print("Using pygame-ce instead of pygame")
     except ImportError:
-        print("กรุณาติดตั้ง pygame หรือ pygame-ce")
+        print("Please install pygame or pygame-ce")
         sys.exit(1)
 
 from pygame.locals import (
@@ -37,42 +40,81 @@ from pygame.locals import (
     K_TAB,
 )
 
-from core.constants import (
-    SCREEN_WIDTH,
-    SCREEN_HEIGHT,
-    BLACK,
-    WHITE,
-    DENSO_RED,
-    DENSO_DARK_RED,
-    DENSO_LIGHT_RED,
-    UI_BG,
-    UI_BUTTON,
-    UI_BUTTON_HOVER,
-    UI_TEXT,
-    UI_SUBTEXT,
-    UI_ACCENT,
-    UI_HIGHLIGHT,
-    BUTTON_WIDTH,
-    BUTTON_HEIGHT,
-    BUTTON_PADDING,
-    BUTTON_CORNER_RADIUS,
-    MENU_SPACING,
-    FONT_SIZE_TITLE,
-    FONT_SIZE_LARGE,
-    FONT_SIZE_MEDIUM,
-    FONT_SIZE_SMALL,
-    FONT_SIZE_TINY,
-    UI_BORDER,
-)
-from core.game import Game
-from audio.sound_manager import SoundManager
-from db.queries import (
-    get_top_scores,
-    authenticate_user,
-    register_user,
-    get_user_settings,
-)
-from utils.logger import get_logger
+try:
+    from core.constants import (
+        SCREEN_WIDTH,
+        SCREEN_HEIGHT,
+        BLACK,
+        WHITE,
+        DENSO_RED,
+        DENSO_DARK_RED,
+        DENSO_LIGHT_RED,
+        UI_BG,
+        UI_BUTTON,
+        UI_BUTTON_HOVER,
+        UI_TEXT,
+        UI_SUBTEXT,
+        UI_ACCENT,
+        UI_HIGHLIGHT,
+        BUTTON_WIDTH,
+        BUTTON_HEIGHT,
+        BUTTON_PADDING,
+        BUTTON_CORNER_RADIUS,
+        MENU_SPACING,
+        FONT_SIZE_TITLE,
+        FONT_SIZE_LARGE,
+        FONT_SIZE_MEDIUM,
+        FONT_SIZE_SMALL,
+        FONT_SIZE_TINY,
+        UI_BORDER,
+    )
+    from core.game import Game
+    from audio.sound_manager import SoundManager
+    from utils.logger import get_logger
+except ImportError as e:
+    print(f"Error importing required modules: {e}")
+    # Set some fallback values to prevent crashes
+    SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
+    BLACK = (0, 0, 0)
+    WHITE = (255, 255, 255)
+    DENSO_RED = (220, 0, 50)
+    DENSO_DARK_RED = (160, 0, 35)
+    DENSO_LIGHT_RED = (255, 60, 90)
+    UI_BG = (24, 24, 32)
+    UI_BUTTON = (45, 45, 60)
+    UI_BUTTON_HOVER = (55, 55, 70)
+    UI_TEXT = (245, 245, 245)
+    UI_SUBTEXT = (180, 180, 190)
+    UI_ACCENT = (230, 230, 230)
+    UI_HIGHLIGHT = DENSO_RED
+    UI_BORDER = (60, 60, 70)
+    BUTTON_WIDTH = 220
+    BUTTON_HEIGHT = 50
+    BUTTON_PADDING = 15
+    BUTTON_CORNER_RADIUS = 5
+    MENU_SPACING = 70
+    FONT_SIZE_TITLE = 56
+    FONT_SIZE_LARGE = 28
+    FONT_SIZE_MEDIUM = 22
+    FONT_SIZE_SMALL = 16
+    FONT_SIZE_TINY = 12
+
+# Try to import database functions
+try:
+    from db.queries import (
+        get_top_scores,
+        authenticate_user,
+        register_user,
+        get_user_settings,
+    )
+
+    DB_AVAILABLE = True
+except ImportError:
+    DB_AVAILABLE = False
+    print("Database functionality not available, using fallback mode")
+
+# Setup logger
+logger = logging.getLogger("tetris.menu")
 
 
 class Button:
@@ -131,7 +173,7 @@ class Button:
                 )
                 self.icon_rect = self.icon.get_rect(midleft=(x + 10, y + height // 2))
             except Exception as e:
-                print(f"Couldn't load icon {icon}: {e}")
+                logger.error(f"Couldn't load icon {icon}: {e}")
 
         # Pre-render text
         self.update_text(text)
@@ -335,7 +377,7 @@ class InputField:
                 )
                 self.icon_rect = self.icon.get_rect(midleft=(x + 10, y + height // 2))
             except Exception as e:
-                print(f"Couldn't load icon {icon}: {e}")
+                logger.error(f"Couldn't load icon {icon}: {e}")
 
         # Animation properties
         self.animation_state = 0  # 0-1 for hover/active animation
@@ -575,13 +617,25 @@ class MainMenu:
         """
         self.screen = screen
         self.config = config
-        self.logger = get_logger()
+        self.logger = get_logger("tetris.menu")
 
         # Create sound system
-        self.sound_manager = SoundManager(config)
-
-        # Start menu music
-        self.sound_manager.play_music("menu")
+        try:
+            self.sound_manager = SoundManager(config)
+            # Start menu music
+            self.sound_manager.play_music("menu")
+        except Exception as e:
+            self.logger.error(f"Error initializing sound: {e}")
+            # Create dummy sound manager to prevent crashes
+            self.sound_manager = type(
+                "DummySoundManager",
+                (),
+                {
+                    "play_sound": lambda *args, **kwargs: None,
+                    "play_music": lambda *args, **kwargs: None,
+                    "stop_music": lambda *args, **kwargs: None,
+                },
+            )()
 
         # Create background surface
         self.background = self._create_background()
@@ -634,6 +688,7 @@ class MainMenu:
         self.transition_target = ""  # Target menu for transition
         self.transition_speed = 4.0  # Transition speed multiplier
         self.transition_direction = 1  # 1 for in, -1 for out
+        self.transition_callback = None  # Callback after transition
 
         # States
         self.current_menu = "main"  # main, play, howto, settings, leaderboard, register
@@ -922,7 +977,10 @@ class MainMenu:
     def _handle_menu_click(self, index):
         """Handle main menu button click with transition animation"""
         self.selected_item = index
-        self.sound_manager.play_sound("menu_select")
+        try:
+            self.sound_manager.play_sound("menu_select")
+        except:
+            pass
 
         if self.menu_items[index] == "Play Game":
             self._set_transition("play")
@@ -961,12 +1019,18 @@ class MainMenu:
     def _back_to_main(self):
         """Go back to main menu with transition"""
         self._set_transition("main")
-        self.sound_manager.play_sound("menu_change")
+        try:
+            self.sound_manager.play_sound("menu_change")
+        except:
+            pass
 
     def _switch_to_register(self):
         """Switch to registration screen with transition"""
         self._set_transition("register")
-        self.sound_manager.play_sound("menu_change")
+        try:
+            self.sound_manager.play_sound("menu_change")
+        except:
+            pass
 
     def _create_background(self):
         """
@@ -1015,10 +1079,16 @@ class MainMenu:
     def _load_leaderboard(self):
         """Load leaderboard data with error handling"""
         try:
-            self.leaderboard_data = get_top_scores(10)
-            if not self.leaderboard_data:
+            if DB_AVAILABLE:
+                self.leaderboard_data = get_top_scores(10)
+                if not self.leaderboard_data:
+                    self._show_notification(
+                        "No scores found in leaderboard", (255, 200, 100)
+                    )
+            else:
+                self.leaderboard_data = []
                 self._show_notification(
-                    "No scores found in leaderboard", (255, 200, 100)
+                    "Database not available - leaderboard disabled", (255, 200, 100)
                 )
         except Exception as e:
             self.logger.error(f"Could not load leaderboard: {e}")
@@ -1092,7 +1162,10 @@ class MainMenu:
 
             # Play sound when first hovering over a button
             if not was_hovered and is_hovered:
-                self.sound_manager.play_sound("menu_change")
+                try:
+                    self.sound_manager.play_sound("menu_change")
+                except:
+                    pass
 
     def _handle_main_menu_event(self, event):
         """Handle events in main menu"""
@@ -1100,10 +1173,16 @@ class MainMenu:
         if event.type == KEYDOWN:
             if event.key == K_UP:
                 self.selected_item = (self.selected_item - 1) % len(self.menu_items)
-                self.sound_manager.play_sound("menu_change")
+                try:
+                    self.sound_manager.play_sound("menu_change")
+                except:
+                    pass
             elif event.key == K_DOWN:
                 self.selected_item = (self.selected_item + 1) % len(self.menu_items)
-                self.sound_manager.play_sound("menu_change")
+                try:
+                    self.sound_manager.play_sound("menu_change")
+                except:
+                    pass
             elif event.key == K_RETURN:
                 # Same as clicking the selected button
                 return self._handle_menu_click(self.selected_item)
@@ -1179,14 +1258,20 @@ class MainMenu:
 
         if self.back_button.update(self.current_events):
             self._set_transition("play")  # Go back to login screen
-            self.sound_manager.play_sound("menu_change")
+            try:
+                self.sound_manager.play_sound("menu_change")
+            except:
+                pass
             return True
 
         # Keyboard navigation
         if event.type == KEYDOWN:
             if event.key == K_ESCAPE:
                 self._set_transition("play")  # Go back to login screen
-                self.sound_manager.play_sound("menu_change")
+                try:
+                    self.sound_manager.play_sound("menu_change")
+                except:
+                    pass
                 return True
             elif event.key == K_RETURN and not (
                 self.username_input.active
@@ -1259,29 +1344,49 @@ class MainMenu:
             return False
 
         try:
-            # Authenticate
-            if authenticate_user(username, password):
+            if DB_AVAILABLE:
+                # Authenticate
+                if authenticate_user(username, password):
+                    self.username = username
+                    self._show_notification(
+                        f"Login successful! Welcome {self.username}", (100, 255, 100)
+                    )
+                    try:
+                        self.sound_manager.play_sound("menu_select")
+                    except:
+                        pass
+
+                    # Load user settings
+                    try:
+                        settings = get_user_settings(self.username)
+                    except:
+                        settings = None
+
+                    # Start game with transition
+                    self._set_transition(
+                        "main", lambda: Game(self.screen, self.config, self.username)
+                    )
+                    return False  # Return False until transition completes
+                else:
+                    self.password_input.set_error("Invalid credentials")
+                    self._show_notification(
+                        "Invalid username or password", (255, 100, 100)
+                    )
+                    return False
+            else:
+                # In development mode, accept any login
                 self.username = username
                 self._show_notification(
-                    f"Login successful! Welcome {self.username}", (100, 255, 100)
+                    f"Login successful (dev mode)! Welcome {self.username}",
+                    (100, 255, 100),
                 )
-                self.sound_manager.play_sound("menu_select")
-
-                # Load user settings
-                settings = get_user_settings(self.username)
-                if settings:
-                    # Use user settings
-                    # (not implemented in this example)
+                try:
+                    self.sound_manager.play_sound("menu_select")
+                except:
                     pass
-
-                # Start game with transition
                 self._set_transition(
                     "main", lambda: Game(self.screen, self.config, self.username)
                 )
-                return False  # Return False until transition completes
-            else:
-                self.password_input.set_error("Invalid credentials")
-                self._show_notification("Invalid username or password", (255, 100, 100))
                 return False
 
         except Exception as e:
@@ -1320,25 +1425,42 @@ class MainMenu:
             return False
 
         try:
-            # Register new user
-            if register_user(username, password):
+            if DB_AVAILABLE:
+                # Register new user
+                if register_user(username, password):
+                    self.username = username
+                    self._show_notification("Registration successful!", (100, 255, 100))
+                    try:
+                        self.sound_manager.play_sound("menu_select")
+                    except:
+                        pass
+
+                    # Reset fields
+                    self.username_input.text = username  # Keep username for login
+                    self.password_input.text = ""
+                    self.email_input.text = ""
+
+                    # Switch back to login screen with transition
+                    self._set_transition("play")
+                    self.login_message = "Account created! You can now log in."
+                    return True
+                else:
+                    self.username_input.set_error("Username already exists")
+                    self._show_notification("Username already exists", (255, 100, 100))
+                    return False
+            else:
+                # In development mode, accept any registration
                 self.username = username
-                self._show_notification("Registration successful!", (100, 255, 100))
-                self.sound_manager.play_sound("menu_select")
-
-                # Reset fields
-                self.username_input.text = username  # Keep username for login
-                self.password_input.text = ""
-                self.email_input.text = ""
-
-                # Switch back to login screen with transition
+                self._show_notification(
+                    "Registration successful (dev mode)!", (100, 255, 100)
+                )
+                try:
+                    self.sound_manager.play_sound("menu_select")
+                except:
+                    pass
                 self._set_transition("play")
                 self.login_message = "Account created! You can now log in."
                 return True
-            else:
-                self.username_input.set_error("Username already exists")
-                self._show_notification("Username already exists", (255, 100, 100))
-                return False
 
         except Exception as e:
             self.logger.error(f"Error during registration: {e}")
@@ -1996,7 +2118,10 @@ class MainMenu:
             # Draw setting value with DENSO red for emphasis
             value_text = self.medium_font.render(value, True, UI_HIGHLIGHT)
             value_rect = value_text.get_rect(
-                midright=(card_x + card_width - 30, y_pos + label_text.get_height() // 2)
+                midright=(
+                    card_x + card_width - 30,
+                    y_pos + label_text.get_height() // 2,
+                )
             )
             surface.blit(value_text, value_rect)
 
@@ -2130,7 +2255,7 @@ class MainMenu:
 
                 # Player name
                 name_color = DENSO_RED if score.username == self.username else UI_TEXT
-                name = self.medium_font.render(score.username, True, name_color
+                name = self.medium_font.render(score.username, True, name_color)
                 name_rect = name.get_rect(centerx=card_x + 200, centery=y_pos + 15)
                 surface.blit(name, name_rect)
 
