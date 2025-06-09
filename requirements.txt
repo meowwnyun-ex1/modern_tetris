@@ -3,11 +3,15 @@ pygame>=2.5.0
 PyYAML>=6.0
 numpy>=1.24.0
 
-# Database support
+# Database support for Neon PostgreSQL
 SQLAlchemy>=2.0.0
+psycopg2-binary>=2.9.0  # PostgreSQL adapter
 bcrypt>=4.0.0
 
-# Optional dependencies (can be commented out if not needed)
+# Environment variables support
+python-dotenv>=1.0.0
+
+# Optional dependencies
 Pillow>=10.0.0  # For image processing
 
 # Development tools (uncomment for development)
